@@ -11,7 +11,7 @@ if(STATIC)
   set(STATIC_AFF 1)
 endif(STATIC)
 
-add_definitions(-DXMOUNT_VERSION="0.7.5")
+add_definitions(-DXMOUNT_VERSION="1.0.0")
 
 if(APPLE)
   # On OSx, do not try to find frameworks but only std headers / libraries
@@ -63,6 +63,7 @@ else(NOT APPLE)
   # On OSx, search for osxfuse
   find_package(LibOSXFUSE REQUIRED)
 endif(NOT APPLE)
+find_package(libgidafs REQUIRED)
 
 # Generate config.h and add it's path to the include dirs
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.h.in

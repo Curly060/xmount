@@ -7,6 +7,9 @@ else(NOT APPLE)
   link_directories(${LIBOSXFUSE_LIBRARY_DIRS})
 endif(NOT APPLE)
 
+set(LIBS ${LIBS} ${libgidafs_LIBRARIES})
+include_directories(${libgidafs_INCLUDE_DIRS})
+
 set(LIBS ${LIBS} "dl")
 
 add_definitions(-DXMOUNT_LIBRARY_PATH="${CMAKE_INSTALL_PREFIX}/lib/xmount")

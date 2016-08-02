@@ -45,6 +45,8 @@
 #define FUSE_USE_VERSION 26
 #include <fuse.h>
 
+#include <gidafs.h>
+
 #include "xmount.h"
 #include "md5.h"
 #include "macros.h"
@@ -1124,7 +1126,7 @@ static int GetVirtImageData(char *p_buf, off_t offset, size_t size) {
            glob_xmount.cache.p_cache_header->VdiFileHeaderCached==TRUE)
         {
           // VDI header was already cached
-          if(fseeko(glob_xmount.cache.h_cache_file,
+          if(fseeko(glob_xmount.cache.h_old_cache_file,
                     glob_xmount.cache.p_cache_header->pVdiFileHeader+file_off,
                     SEEK_SET)!=0)
           {
@@ -1133,7 +1135,7 @@ static int GetVirtImageData(char *p_buf, off_t offset, size_t size) {
                       glob_xmount.cache.p_cache_header->pVdiFileHeader+file_off)
             return -EIO;
           }
-          if(fread(p_buf,cur_to_read,1,glob_xmount.cache.h_cache_file)!=1) {
+          if(fread(p_buf,cur_to_read,1,glob_xmount.cache.h_old_cache_file)!=1) {
             LOG_ERROR("Couldn't read %zu bytes from cache file at offset %"
                         PRIu64 "\n",
                       cur_to_read,
@@ -1191,7 +1193,7 @@ static int GetVirtImageData(char *p_buf, off_t offset, size_t size) {
        glob_xmount.cache.p_cache_blkidx[cur_block].Assigned==TRUE)
     {
       // Write support enabled and need to read altered data from cachefile
-      if(fseeko(glob_xmount.cache.h_cache_file,
+      if(fseeko(glob_xmount.cache.h_old_cache_file,
                 glob_xmount.cache.p_cache_blkidx[cur_block].off_data+block_off,
                 SEEK_SET)!=0)
       {
@@ -1199,7 +1201,7 @@ static int GetVirtImageData(char *p_buf, off_t offset, size_t size) {
                   " in cache file\n")
         return -EIO;
       }
-      if(fread(p_buf,cur_to_read,1,glob_xmount.cache.h_cache_file)!=1) {
+      if(fread(p_buf,cur_to_read,1,glob_xmount.cache.h_old_cache_file)!=1) {
         LOG_ERROR("Couldn't read data from cache file!\n")
         return -EIO;
       }
@@ -1238,7 +1240,7 @@ static int GetVirtImageData(char *p_buf, off_t offset, size_t size) {
            glob_xmount.cache.p_cache_header->VhdFileHeaderCached==TRUE)
         {
           // VHD footer was already cached
-          if(fseeko(glob_xmount.cache.h_cache_file,
+          if(fseeko(glob_xmount.cache.h_old_cache_file,
                     glob_xmount.cache.p_cache_header->pVhdFileHeader+
                       (file_off-morphed_image_size),
                     SEEK_SET)!=0)
@@ -1249,7 +1251,7 @@ static int GetVirtImageData(char *p_buf, off_t offset, size_t size) {
                         (file_off-morphed_image_size))
             return -EIO;
           }
-          if(fread(p_buf,to_read_later,1,glob_xmount.cache.h_cache_file)!=1) {
+          if(fread(p_buf,to_read_later,1,glob_xmount.cache.h_old_cache_file)!=1) {
             LOG_ERROR("Couldn't read %zu bytes from cache file at offset %"
                         PRIu64 "\n",
                       to_read_later,
@@ -1300,7 +1302,7 @@ static int SetVdiFileHeaderData(char *p_buf,off_t offset,size_t size) {
 
   if(glob_xmount.cache.p_cache_header->VdiFileHeaderCached==1) {
     // Header was already cached
-    if(fseeko(glob_xmount.cache.h_cache_file,
+    if(fseeko(glob_xmount.cache.h_old_cache_file,
               glob_xmount.cache.p_cache_header->pVdiFileHeader+offset,
               SEEK_SET)!=0)
     {
@@ -1308,7 +1310,7 @@ static int SetVdiFileHeaderData(char *p_buf,off_t offset,size_t size) {
                 glob_xmount.cache.p_cache_header->pVdiFileHeader+offset)
       return -1;
     }
-    if(fwrite(p_buf,size,1,glob_xmount.cache.h_cache_file)!=1) {
+    if(fwrite(p_buf,size,1,glob_xmount.cache.h_old_cache_file)!=1) {
       LOG_ERROR("Couldn't write %zu bytes to cache file at offset %"
                   PRIu64 "\n",
                 size,
@@ -1321,7 +1323,7 @@ static int SetVdiFileHeaderData(char *p_buf,off_t offset,size_t size) {
               glob_xmount.cache.p_cache_header->pVdiFileHeader+offset)
   } else {
     // Header wasn't already cached.
-    if(fseeko(glob_xmount.cache.h_cache_file,
+    if(fseeko(glob_xmount.cache.h_old_cache_file,
               0,
               SEEK_END)!=0)
     {
@@ -1329,7 +1331,7 @@ static int SetVdiFileHeaderData(char *p_buf,off_t offset,size_t size) {
       return -1;
     }
     glob_xmount.cache.p_cache_header->pVdiFileHeader=
-      ftello(glob_xmount.cache.h_cache_file);
+      ftello(glob_xmount.cache.h_old_cache_file);
     LOG_DEBUG("Caching whole VDI header\n")
     if(offset>0) {
       // Changes do not begin at offset 0, need to prepend with data from
@@ -1337,7 +1339,7 @@ static int SetVdiFileHeaderData(char *p_buf,off_t offset,size_t size) {
       if(fwrite((char*)glob_xmount.output.vdi.p_vdi_header,
                 offset,
                 1,
-                glob_xmount.cache.h_cache_file)!=1)
+                glob_xmount.cache.h_old_cache_file)!=1)
       {
         LOG_ERROR("Error while writing %" PRIu64 " bytes "
                     "to cache file at offset %" PRIu64 "!\n",
@@ -1351,7 +1353,7 @@ static int SetVdiFileHeaderData(char *p_buf,off_t offset,size_t size) {
                 glob_xmount.cache.p_cache_header->pVdiFileHeader)
     }
     // Cache changed data
-    if(fwrite(p_buf,size,1,glob_xmount.cache.h_cache_file)!=1) {
+    if(fwrite(p_buf,size,1,glob_xmount.cache.h_old_cache_file)!=1) {
       LOG_ERROR("Couldn't write %zu bytes to cache file at offset %"
                   PRIu64 "\n",size,
                 glob_xmount.cache.p_cache_header->pVdiFileHeader+offset)
@@ -1366,7 +1368,7 @@ static int SetVdiFileHeaderData(char *p_buf,off_t offset,size_t size) {
       if(fwrite(((char*)glob_xmount.output.vdi.p_vdi_header)+offset+size,
                 glob_xmount.output.vdi.vdi_header_size-(offset+size),
                 1,
-                glob_xmount.cache.h_cache_file)!=1)
+                glob_xmount.cache.h_old_cache_file)!=1)
       {
         LOG_ERROR("Couldn't write %zu bytes to cache file at offset %"
                     PRIu64 "\n",
@@ -1382,14 +1384,14 @@ static int SetVdiFileHeaderData(char *p_buf,off_t offset,size_t size) {
     }
     // Mark header as cached and update header in cache file
     glob_xmount.cache.p_cache_header->VdiFileHeaderCached=1;
-    if(fseeko(glob_xmount.cache.h_cache_file,0,SEEK_SET)!=0) {
+    if(fseeko(glob_xmount.cache.h_old_cache_file,0,SEEK_SET)!=0) {
       LOG_ERROR("Couldn't seek to offset 0 of cache file!\n")
       return -1;
     }
     if(fwrite((char*)glob_xmount.cache.p_cache_header,
               sizeof(ts_CacheFileHeader),
               1,
-              glob_xmount.cache.h_cache_file)!=1)
+              glob_xmount.cache.h_old_cache_file)!=1)
     {
       LOG_ERROR("Couldn't write changed cache file header!\n")
       return -1;
@@ -1397,9 +1399,9 @@ static int SetVdiFileHeaderData(char *p_buf,off_t offset,size_t size) {
   }
   // All important data has been written, now flush all buffers to make
   // sure data is written to cache file
-  fflush(glob_xmount.cache.h_cache_file);
+  fflush(glob_xmount.cache.h_old_cache_file);
 #ifndef __APPLE__
-  ioctl(fileno(glob_xmount.cache.h_cache_file),BLKFLSBUF,0);
+  ioctl(fileno(glob_xmount.cache.h_old_cache_file),BLKFLSBUF,0);
 #endif
   return size;
 }
@@ -1416,7 +1418,7 @@ static int SetVhdFileHeaderData(char *p_buf,off_t offset,size_t size) {
             " from VHD footer\n",size,offset)
   if(glob_xmount.cache.p_cache_header->VhdFileHeaderCached==1) {
     // Header has already been cached
-    if(fseeko(glob_xmount.cache.h_cache_file,
+    if(fseeko(glob_xmount.cache.h_old_cache_file,
               glob_xmount.cache.p_cache_header->pVhdFileHeader+offset,
               SEEK_SET)!=0)
     {
@@ -1424,7 +1426,7 @@ static int SetVhdFileHeaderData(char *p_buf,off_t offset,size_t size) {
                 glob_xmount.cache.p_cache_header->pVhdFileHeader+offset);
       return -1;
     }
-    if(fwrite(p_buf,size,1,glob_xmount.cache.h_cache_file)!=1) {
+    if(fwrite(p_buf,size,1,glob_xmount.cache.h_old_cache_file)!=1) {
       LOG_ERROR("Couldn't write %zu bytes to cache file at offset %"
                   PRIu64 "\n",
                 size,
@@ -1436,7 +1438,7 @@ static int SetVhdFileHeaderData(char *p_buf,off_t offset,size_t size) {
               glob_xmount.cache.p_cache_header->pVhdFileHeader+offset);
   } else {
     // Header hasn't been cached yet.
-    if(fseeko(glob_xmount.cache.h_cache_file,
+    if(fseeko(glob_xmount.cache.h_old_cache_file,
               0,
               SEEK_END)!=0)
     {
@@ -1444,7 +1446,7 @@ static int SetVhdFileHeaderData(char *p_buf,off_t offset,size_t size) {
       return -1;
     }
     glob_xmount.cache.p_cache_header->pVhdFileHeader=
-      ftello(glob_xmount.cache.h_cache_file);
+      ftello(glob_xmount.cache.h_old_cache_file);
     LOG_DEBUG("Caching whole VHD header\n")
     if(offset>0) {
       // Changes do not begin at offset 0, need to prepend with data from
@@ -1452,7 +1454,7 @@ static int SetVhdFileHeaderData(char *p_buf,off_t offset,size_t size) {
       if(fwrite((char*)glob_xmount.output.vhd.p_vhd_header,
                 offset,
                 1,
-                glob_xmount.cache.h_cache_file)!=1)
+                glob_xmount.cache.h_old_cache_file)!=1)
       {
         LOG_ERROR("Error while writing %" PRIu64 " bytes "
                   "to cache file at offset %" PRIu64 "!\n",
@@ -1466,7 +1468,7 @@ static int SetVhdFileHeaderData(char *p_buf,off_t offset,size_t size) {
                 glob_xmount.cache.p_cache_header->pVhdFileHeader);
     }
     // Cache changed data
-    if(fwrite(p_buf,size,1,glob_xmount.cache.h_cache_file)!=1) {
+    if(fwrite(p_buf,size,1,glob_xmount.cache.h_old_cache_file)!=1) {
       LOG_ERROR("Couldn't write %zu bytes to cache file at offset %"
                   PRIu64 "\n",
                 size,
@@ -1482,7 +1484,7 @@ static int SetVhdFileHeaderData(char *p_buf,off_t offset,size_t size) {
       if(fwrite(((char*)glob_xmount.output.vhd.p_vhd_header)+offset+size,
                 sizeof(ts_VhdFileHeader)-(offset+size),
                 1,
-                glob_xmount.cache.h_cache_file)!=1)
+                glob_xmount.cache.h_old_cache_file)!=1)
       {
         LOG_ERROR("Couldn't write %zu bytes to cache file at offset %"
                     PRIu64 "\n",
@@ -1498,14 +1500,14 @@ static int SetVhdFileHeaderData(char *p_buf,off_t offset,size_t size) {
     }
     // Mark header as cached and update header in cache file
     glob_xmount.cache.p_cache_header->VhdFileHeaderCached=1;
-    if(fseeko(glob_xmount.cache.h_cache_file,0,SEEK_SET)!=0) {
+    if(fseeko(glob_xmount.cache.h_old_cache_file,0,SEEK_SET)!=0) {
       LOG_ERROR("Couldn't seek to offset 0 of cache file!\n")
       return -1;
     }
     if(fwrite((char*)glob_xmount.cache.p_cache_header,
               sizeof(ts_CacheFileHeader),
               1,
-              glob_xmount.cache.h_cache_file)!=1)
+              glob_xmount.cache.h_old_cache_file)!=1)
     {
       LOG_ERROR("Couldn't write changed cache file header!\n")
       return -1;
@@ -1513,9 +1515,9 @@ static int SetVhdFileHeaderData(char *p_buf,off_t offset,size_t size) {
   }
   // All important data has been written, now flush all buffers to make
   // sure data is written to cache file
-  fflush(glob_xmount.cache.h_cache_file);
+  fflush(glob_xmount.cache.h_old_cache_file);
 #ifndef __APPLE__
-  ioctl(fileno(glob_xmount.cache.h_cache_file),BLKFLSBUF,0);
+  ioctl(fileno(glob_xmount.cache.h_old_cache_file),BLKFLSBUF,0);
 #endif
   return size;
 }
@@ -1613,7 +1615,7 @@ static int SetVirtImageData(const char *p_buf, off_t offset, size_t size) {
     if(glob_xmount.cache.p_cache_blkidx[cur_block].Assigned==1) {
       // Block was already cached
       // Seek to data offset in cache file
-      if(fseeko(glob_xmount.cache.h_cache_file,
+      if(fseeko(glob_xmount.cache.h_old_cache_file,
              glob_xmount.cache.p_cache_blkidx[cur_block].off_data+block_offset,
              SEEK_SET)!=0)
       {
@@ -1622,7 +1624,7 @@ static int SetVirtImageData(const char *p_buf, off_t offset, size_t size) {
                     block_offset);
         return -1;
       }
-      if(fwrite(p_write_buf,to_write_now,1,glob_xmount.cache.h_cache_file)!=1) {
+      if(fwrite(p_write_buf,to_write_now,1,glob_xmount.cache.h_old_cache_file)!=1) {
         LOG_ERROR("Error while writing %zu bytes "
                   "to cache file at offset %" PRIu64 "!\n",
                   to_write_now,
@@ -1637,9 +1639,9 @@ static int SetVirtImageData(const char *p_buf, off_t offset, size_t size) {
     } else {
       // Uncached block. Need to cache entire new block
       // Seek to end of cache file to append new cache block
-      fseeko(glob_xmount.cache.h_cache_file,0,SEEK_END);
+      fseeko(glob_xmount.cache.h_old_cache_file,0,SEEK_END);
       glob_xmount.cache.p_cache_blkidx[cur_block].off_data=
-        ftello(glob_xmount.cache.h_cache_file);
+        ftello(glob_xmount.cache.h_old_cache_file);
       if(block_offset!=0) {
         // Changed data does not begin at block boundry. Need to prepend
         // with data from virtual image file
@@ -1652,7 +1654,7 @@ static int SetVirtImageData(const char *p_buf, off_t offset, size_t size) {
           LOG_ERROR("Couldn't read data from morphed image!\n")
           return -1;
         }
-        if(fwrite(p_buf2,block_offset,1,glob_xmount.cache.h_cache_file)!=1) {
+        if(fwrite(p_buf2,block_offset,1,glob_xmount.cache.h_old_cache_file)!=1) {
           LOG_ERROR("Couldn't writing %" PRIu64 " bytes "
                     "to cache file at offset %" PRIu64 "!\n",
                     block_offset,
@@ -1664,7 +1666,7 @@ static int SetVirtImageData(const char *p_buf, off_t offset, size_t size) {
                   "\n",block_offset,file_offset-block_offset)
         free(p_buf2);
       }
-      if(fwrite(p_write_buf,to_write_now,1,glob_xmount.cache.h_cache_file)!=1) {
+      if(fwrite(p_write_buf,to_write_now,1,glob_xmount.cache.h_old_cache_file)!=1) {
         LOG_ERROR("Error while writing %zd bytes "
                     "to cache file at offset %" PRIu64 "!\n",
                   to_write_now,
@@ -1701,7 +1703,7 @@ static int SetVirtImageData(const char *p_buf, off_t offset, size_t size) {
         if(fwrite(p_buf2,
                   CACHE_BLOCK_SIZE-(block_offset+to_write_now),
                   1,
-                  glob_xmount.cache.h_cache_file)!=1)
+                  glob_xmount.cache.h_old_cache_file)!=1)
         {
           LOG_ERROR("Error while writing %zd bytes "
                       "to cache file at offset %" PRIu64 "!\n",
@@ -1714,20 +1716,20 @@ static int SetVirtImageData(const char *p_buf, off_t offset, size_t size) {
       }
       // All important data for this cache block has been written,
       // flush all buffers and mark cache block as assigned
-      fflush(glob_xmount.cache.h_cache_file);
+      fflush(glob_xmount.cache.h_old_cache_file);
 #ifndef __APPLE__
-      ioctl(fileno(glob_xmount.cache.h_cache_file),BLKFLSBUF,0);
+      ioctl(fileno(glob_xmount.cache.h_old_cache_file),BLKFLSBUF,0);
 #endif
       glob_xmount.cache.p_cache_blkidx[cur_block].Assigned=1;
       // Update cache block index entry in cache file
-      fseeko(glob_xmount.cache.h_cache_file,
+      fseeko(glob_xmount.cache.h_old_cache_file,
              sizeof(ts_CacheFileHeader)+
                (cur_block*sizeof(ts_CacheFileBlockIndex)),
              SEEK_SET);
       if(fwrite(&(glob_xmount.cache.p_cache_blkidx[cur_block]),
                 sizeof(ts_CacheFileBlockIndex),
                 1,
-                glob_xmount.cache.h_cache_file)!=1)
+                glob_xmount.cache.h_old_cache_file)!=1)
       {
         LOG_ERROR("Couldn't update cache file block index!\n");
         return -1;
@@ -1738,9 +1740,9 @@ static int SetVirtImageData(const char *p_buf, off_t offset, size_t size) {
                 glob_xmount.cache.p_cache_blkidx[cur_block].off_data);
     }
     // Flush buffers
-    fflush(glob_xmount.cache.h_cache_file);
+    fflush(glob_xmount.cache.h_old_cache_file);
 #ifndef __APPLE__
-    ioctl(fileno(glob_xmount.cache.h_cache_file),BLKFLSBUF,0);
+    ioctl(fileno(glob_xmount.cache.h_old_cache_file),BLKFLSBUF,0);
 #endif
     block_offset=0;
     cur_block++;
@@ -2142,16 +2144,16 @@ static int InitCacheFile() {
 
   if(!glob_xmount.cache.overwrite_cache) {
     // Try to open an existing cache file or create a new one
-    glob_xmount.cache.h_cache_file=(FILE*)FOPEN(glob_xmount.cache.p_cache_file,
+    glob_xmount.cache.h_old_cache_file=(FILE*)FOPEN(glob_xmount.cache.p_cache_file,
                                                 "rb+");
-    if(glob_xmount.cache.h_cache_file==NULL) {
+    if(glob_xmount.cache.h_old_cache_file==NULL) {
       // As the c lib seems to have no possibility to open a file rw wether it
       // exists or not (w+ does not work because it truncates an existing file),
       // when r+ returns NULL the file could simply not exist
       LOG_DEBUG("Cache file does not exist. Creating new one\n")
-      glob_xmount.cache.h_cache_file=
+      glob_xmount.cache.h_old_cache_file=
         (FILE*)FOPEN(glob_xmount.cache.p_cache_file,"wb+");
-      if(glob_xmount.cache.h_cache_file==NULL) {
+      if(glob_xmount.cache.h_old_cache_file==NULL) {
         // There is really a problem opening the file
         LOG_ERROR("Couldn't open cache file \"%s\"!\n",
                   glob_xmount.cache.p_cache_file)
@@ -2160,9 +2162,9 @@ static int InitCacheFile() {
     }
   } else {
     // Overwrite existing cache file or create a new one
-    glob_xmount.cache.h_cache_file=(FILE*)FOPEN(glob_xmount.cache.p_cache_file,
+    glob_xmount.cache.h_old_cache_file=(FILE*)FOPEN(glob_xmount.cache.p_cache_file,
                                                 "wb+");
-    if(glob_xmount.cache.h_cache_file==NULL) {
+    if(glob_xmount.cache.h_old_cache_file==NULL) {
       LOG_ERROR("Couldn't open cache file \"%s\"!\n",
                 glob_xmount.cache.p_cache_file)
       return FALSE;
@@ -2189,30 +2191,30 @@ static int InitCacheFile() {
 
   // Get cache file size
   // fseeko64 had massive problems!
-  if(fseeko(glob_xmount.cache.h_cache_file,0,SEEK_END)!=0) {
+  if(fseeko(glob_xmount.cache.h_old_cache_file,0,SEEK_END)!=0) {
     LOG_ERROR("Couldn't seek to end of cache file!\n")
     return FALSE;
   }
   // Same here, ftello64 didn't work at all and returned 0 all the times
-  cachefile_size=ftello(glob_xmount.cache.h_cache_file);
+  cachefile_size=ftello(glob_xmount.cache.h_old_cache_file);
   LOG_DEBUG("Cache file has %zd bytes\n",cachefile_size)
 
   if(cachefile_size>0) {
     // Cache file isn't empty, parse block header
     LOG_DEBUG("Cache file not empty. Parsing block header\n")
-    if(fseeko(glob_xmount.cache.h_cache_file,0,SEEK_SET)!=0) {
+    if(fseeko(glob_xmount.cache.h_old_cache_file,0,SEEK_SET)!=0) {
       LOG_ERROR("Couldn't seek to beginning of cache file!\n")
       return FALSE;
     }
     // Read and check file signature
-    if(fread(&buf,8,1,glob_xmount.cache.h_cache_file)!=1 ||
+    if(fread(&buf,8,1,glob_xmount.cache.h_old_cache_file)!=1 ||
        buf!=CACHE_FILE_SIGNATURE)
     {
       LOG_ERROR("Not an xmount cache file or cache file corrupt!\n")
       return FALSE;
     }
     // Now get cache file version (Has only 32bit!)
-    if(fread(&buf,4,1,glob_xmount.cache.h_cache_file)!=1) {
+    if(fread(&buf,4,1,glob_xmount.cache.h_old_cache_file)!=1) {
       LOG_ERROR("Not an xmount cache file or cache file corrupt!\n")
       return FALSE;
     }
@@ -2224,7 +2226,7 @@ static int InitCacheFile() {
         return FALSE;
       case CUR_CACHE_FILE_VERSION:
         // Current version
-        if(fseeko(glob_xmount.cache.h_cache_file,0,SEEK_SET)!=0) {
+        if(fseeko(glob_xmount.cache.h_old_cache_file,0,SEEK_SET)!=0) {
           LOG_ERROR("Couldn't seek to beginning of cache file!\n")
           return FALSE;
         }
@@ -2237,7 +2239,7 @@ static int InitCacheFile() {
         if(fread(glob_xmount.cache.p_cache_header,
                  cachefile_header_size,
                  1,
-                 glob_xmount.cache.h_cache_file)!=1)
+                 glob_xmount.cache.h_old_cache_file)!=1)
         {
           // Cache file isn't big enough
           LOG_ERROR("Cache file corrupt!\n")
@@ -2286,7 +2288,7 @@ static int InitCacheFile() {
     if(fwrite(glob_xmount.cache.p_cache_header,
               cachefile_header_size,
               1,
-              glob_xmount.cache.h_cache_file)!=1)
+              glob_xmount.cache.h_old_cache_file)!=1)
     {
       LOG_ERROR("Couldn't write cache file header to file!\n");
       return FALSE;
@@ -2644,7 +2646,7 @@ static void InitResources() {
 
   // Cache
   glob_xmount.cache.p_cache_file=NULL;
-  glob_xmount.cache.h_cache_file=NULL;
+  glob_xmount.cache.h_old_cache_file=NULL;
   glob_xmount.cache.p_cache_header=NULL;
   glob_xmount.cache.p_cache_blkidx=NULL;
   glob_xmount.cache.overwrite_cache=FALSE;
@@ -2722,8 +2724,8 @@ static void FreeResources() {
     free(glob_xmount.output.p_virtual_image_path);
 
   // Cache
-  if(glob_xmount.cache.h_cache_file!=NULL)
-    fclose(glob_xmount.cache.h_cache_file);
+  if(glob_xmount.cache.h_old_cache_file!=NULL)
+    fclose(glob_xmount.cache.h_old_cache_file);
   if(glob_xmount.cache.p_cache_header!=NULL)
     free(glob_xmount.cache.p_cache_header);
   // glob_xmount.cache.p_cache_blkidx is freed by the above call

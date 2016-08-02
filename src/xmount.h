@@ -350,11 +350,15 @@ typedef struct s_MorphingData {
 } ts_MorphingData;
 
 //! Structures and vars needed for write access
+#define XMOUNT_CACHE_FOLDER "/.xmount"
+#define XMOUNT_CACHE_BLOCK_FILE XMOUNT_CACHE_FOLDER "/blocks.data"
+#define XMOUNT_CACHE_INDEX_FILE XMOUNT_CACHE_FOLDER "/blocks.index"
 typedef struct s_CacheData {
   //! Cache file to save changes to
   char *p_cache_file;
   //! Handle to cache file
-  FILE *h_cache_file;
+  hGidaFs *h_cache_file;
+  FILE *h_old_cache_file;
   //! Overwrite existing cache
   uint8_t overwrite_cache;
   //! Cache header

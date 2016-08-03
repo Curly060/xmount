@@ -133,11 +133,11 @@ typedef struct s_VdiFileHeader {
  *
  * Warning: All values are big-endian!
  */
-// 
+//
 #ifdef __LP64__
   #define VHD_IMAGE_HVAL_COOKIE 0x78697463656E6F63 // "conectix"
 #else
-  #define VHD_IMAGE_HVAL_COOKIE 0x78697463656E6F63LL 
+  #define VHD_IMAGE_HVAL_COOKIE 0x78697463656E6F63LL
 #endif
 #define VHD_IMAGE_HVAL_FEATURES 0x02000000
 #define VHD_IMAGE_HVAL_FILE_FORMAT_VERSION 0x00000100
@@ -183,9 +183,11 @@ typedef struct s_VhdFileHeader {
 #ifdef __LP64__
   #define CACHE_BLOCK_FREE 0xFFFFFFFFFFFFFFFF
 #else
-  #define CACHE_BLOCK_FREE 0xFFFFFFFFFFFFFFFFLL 
+  #define CACHE_BLOCK_FREE 0xFFFFFFFFFFFFFFFFLL
 #endif
 //! Cache file block index array element
+typedef uint64_t t_CacheFileBlockIndex;
+// TODO: Remove
 typedef struct s_CacheFileBlockIndex {
   //! Set to 1 if block is assigned (this block has data in cache file)
   uint32_t Assigned;
@@ -197,7 +199,7 @@ typedef struct s_CacheFileBlockIndex {
 #ifdef __LP64__
   #define CACHE_FILE_SIGNATURE 0xFFFF746E756F6D78 // "xmount\xFF\xFF"
 #else
-  #define CACHE_FILE_SIGNATURE 0xFFFF746E756F6D78LL 
+  #define CACHE_FILE_SIGNATURE 0xFFFF746E756F6D78LL
 #endif
 #define CUR_CACHE_FILE_VERSION 0x00000002 // Current cache file version
 #define HASH_AMOUNT (1024*1024)*10 // Amount of data used to construct a
@@ -352,15 +354,23 @@ typedef struct s_MorphingData {
 //! Structures and vars needed for write access
 #define XMOUNT_CACHE_FOLDER "/.xmount"
 #define XMOUNT_CACHE_BLOCK_FILE XMOUNT_CACHE_FOLDER "/blocks.data"
-#define XMOUNT_CACHE_INDEX_FILE XMOUNT_CACHE_FOLDER "/blocks.index"
+#define XMOUNT_CACHE_BLOCK_INDEX_FILE XMOUNT_CACHE_FOLDER "/blocks.index"
 typedef struct s_CacheData {
   //! Cache file to save changes to
   char *p_cache_file;
   //! Handle to cache file
-  hGidaFs *h_cache_file;
-  FILE *h_old_cache_file;
+  hGidaFs h_cache_file;
+  //! Handle to block cache
+  hGidaFsFile h_block_cache;
+  //! Handle to block cache index
+  hGidaFsFile h_block_cache_index;
+
+  // TODO: Move to s_XmountData
   //! Overwrite existing cache
   uint8_t overwrite_cache;
+
+  // TODO: Remove
+  FILE *h_old_cache_file;
   //! Cache header
   pts_CacheFileHeader p_cache_header;
   //! Cache block index

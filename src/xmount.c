@@ -1182,7 +1182,7 @@ static int GetVirtImageData(char *p_buf, off_t offset, size_t size) {
   // Calculate block to read data from
   cur_block=file_off/CACHE_BLOCK_SIZE;
   block_off=file_off%CACHE_BLOCK_SIZE;
-  
+
   // Read image data
   while(to_read!=0) {
     // Calculate how many bytes we have to read from this block
@@ -1606,7 +1606,7 @@ static int SetVirtImageData(const char *p_buf, off_t offset, size_t size) {
   // Calculate block to write data to
   cur_block=file_offset/CACHE_BLOCK_SIZE;
   block_offset=file_offset%CACHE_BLOCK_SIZE;
-  
+
   while(to_write!=0) {
     // Calculate how many bytes we have to write to this block
     if(block_offset+to_write>CACHE_BLOCK_SIZE) {
@@ -2135,165 +2135,206 @@ static int InitVirtImageInfoFile() {
  * \return TRUE on success, FALSE on error
  */
 static int InitCacheFile() {
-  uint64_t image_size=0;
   uint64_t blockindex_size=0;
-  uint64_t cachefile_header_size=0;
-  uint64_t cachefile_size=0;
+  uint64_t image_size=0;
+  uint64_t written=0;
   uint32_t needed_blocks=0;
-  uint64_t buf;
+  uint8_t is_new_cache_file=0;
+  teGidaFsError gidafs_ret=eGidaFsError_None;
+  t_CacheFileBlockIndex *p_index_buf=NULL;
 
-  if(!glob_xmount.cache.overwrite_cache) {
-    // Try to open an existing cache file or create a new one
-    glob_xmount.cache.h_old_cache_file=(FILE*)FOPEN(glob_xmount.cache.p_cache_file,
-                                                "rb+");
-    if(glob_xmount.cache.h_old_cache_file==NULL) {
-      // As the c lib seems to have no possibility to open a file rw wether it
-      // exists or not (w+ does not work because it truncates an existing file),
-      // when r+ returns NULL the file could simply not exist
-      LOG_DEBUG("Cache file does not exist. Creating new one\n")
-      glob_xmount.cache.h_old_cache_file=
-        (FILE*)FOPEN(glob_xmount.cache.p_cache_file,"wb+");
-      if(glob_xmount.cache.h_old_cache_file==NULL) {
-        // There is really a problem opening the file
-        LOG_ERROR("Couldn't open cache file \"%s\"!\n",
-                  glob_xmount.cache.p_cache_file)
-        return FALSE;
-      }
-    }
-  } else {
-    // Overwrite existing cache file or create a new one
-    glob_xmount.cache.h_old_cache_file=(FILE*)FOPEN(glob_xmount.cache.p_cache_file,
-                                                "wb+");
-    if(glob_xmount.cache.h_old_cache_file==NULL) {
-      LOG_ERROR("Couldn't open cache file \"%s\"!\n",
-                glob_xmount.cache.p_cache_file)
-      return FALSE;
-    }
-  }
-
-  // Get input image size
+  // Get input image size for later use
   if(!GetMorphedImageSize(&image_size)) {
     LOG_ERROR("Couldn't get morphed image size!\n")
     return FALSE;
   }
 
-  // Calculate how many blocks are needed and how big the buffers must be
-  // for the actual cache file version
-  needed_blocks=image_size/CACHE_BLOCK_SIZE;
-  if((image_size%CACHE_BLOCK_SIZE)!=0) needed_blocks++;
-  blockindex_size=needed_blocks*sizeof(ts_CacheFileBlockIndex);
-  cachefile_header_size=sizeof(ts_CacheFileHeader)+blockindex_size;
-  LOG_DEBUG("Cache blocks: %u (%04X) entries, %zd (%08zX) bytes\n",
-            needed_blocks,
-            needed_blocks,
-            blockindex_size,
-            blockindex_size)
+  if(!glob_xmount.cache.overwrite_cache) {
+    // Try to open an existing cache file or create a new one
+    gidafs_ret=GidaFsLib_OpenFs(&(glob_xmount.cache.h_cache_file),
+                                glob_xmount.cache.p_cache_file);
+    if(gidafs_ret!=eGidaFsError_None &&
+       gidafs_ret!=eGidaFsError_FailedOpeningFsFile)
+    {
+      // TODO: Check for old cache file type and inform user it isn't supported
+      // anymore!
+      LOG_ERROR("Couldn't open cache file '%s': Error code %u!\n",
+                glob_xmount.cache.p_cache_file,
+                gidafs_ret)
+      return FALSE;
+    } else if(gidafs_ret==eGidaFsError_FailedOpeningFsFile) {
+      // Unable to open cache file. It might simply not exist.
+      LOG_DEBUG("Cache file '%s' does not exist. Creating new one\n",
+                glob_xmount.cache.p_cache_file)
+      gidafs_ret=GidaFsLib_NewFs(&(glob_xmount.cache.h_cache_file),
+                                 glob_xmount.cache.p_cache_file,
+                                 0);
+      if(gidafs_ret!=eGidaFsError_None) {
+        // There is really a problem opening/creating the file
+        LOG_ERROR("Couldn't open cache file '%s': Error code %u!\n",
+                  glob_xmount.cache.p_cache_file,
+                  gidafs_ret)
+        return FALSE;
+      }
+      is_new_cache_file=1;
+    }
+  } else {
+    // Overwrite existing cache file or create a new one
+    gidafs_ret=GidaFsLib_NewFs(&(glob_xmount.cache.h_cache_file),
+                               glob_xmount.cache.p_cache_file,
+                               0);
+    if(gidafs_ret!=eGidaFsError_None) {
+      // There is really a problem opening/creating the file
+      LOG_ERROR("Couldn't open cache file '%s': Error code %u!\n",
+                glob_xmount.cache.p_cache_file,
+                gidafs_ret)
+      return FALSE;
+    }
+    is_new_cache_file=1;
+  }
 
-  // Get cache file size
-  // fseeko64 had massive problems!
-  if(fseeko(glob_xmount.cache.h_old_cache_file,0,SEEK_END)!=0) {
-    LOG_ERROR("Couldn't seek to end of cache file!\n")
+#define INITCACHEFILE__CLOSE_CACHE do {                                 \
+  gidafs_ret=GidaFsLib_CloseFs(&(glob_xmount.cache.h_cache_file));      \
+  if(gidafs_ret!=eGidaFsError_None) {                                   \
+    LOG_ERROR("Unable to close cache file: Error code %u: Ignoring!\n", \
+              gidafs_ret)                                               \
+  }                                                                     \
+} while(0)
+
+#define INITCACHEFILE__CLOSE_BLOCK_CACHE do {                                 \
+  gidafs_ret=GidaFsLib_CloseFile(glob_xmount.cache.h_cache_file,              \
+                                 &(glob_xmount.cache.h_block_cache));         \
+  if(gidafs_ret!=eGidaFsError_None) {                                         \
+    LOG_ERROR("Unable to close block cache file: Error code %u: Ignoring!\n", \
+              gidafs_ret)                                                     \
+  }                                                                           \
+} while(0)
+
+#define INITCACHEFILE__CLOSE_BLOCK_CACHE_INDEX do {                         \
+  gidafs_ret=GidaFsLib_CloseFile(glob_xmount.cache.h_cache_file,            \
+                                 &(glob_xmount.cache.h_block_cache_index)); \
+  if(gidafs_ret!=eGidaFsError_None) {                                       \
+    LOG_ERROR("Unable to close block cache index file: Error code %u: "     \
+                "Ignoring!\n",                                              \
+              gidafs_ret)                                                   \
+  }                                                                         \
+} while(0)
+
+  if(is_new_cache_file==1) {
+    // New cache file, create needed xmount subdirectory
+    gidafs_ret=GidaFsLib_CreateDir(glob_xmount.cache.h_cache_file,
+                                   XMOUNT_CACHE_FOLDER,
+                                   eGidaFsNodeFlag_RWXu);
+    if(gidafs_ret!=eGidaFsError_None) {
+      LOG_ERROR("Unable to create cache file directory '%s': Error code %u!\n",
+                XMOUNT_CACHE_FOLDER,
+                gidafs_ret)
+      INITCACHEFILE__CLOSE_CACHE;
+      return FALSE;
+    }
+  }
+
+  // Open / Create block cache file
+  gidafs_ret=GidaFsLib_OpenFile(glob_xmount.cache.h_cache_file,
+                                XMOUNT_CACHE_BLOCK_FILE,
+                                &(glob_xmount.cache.h_block_cache),
+                                eGidaFsOpenFileFlag_ReadWrite |
+                                  (is_new_cache_file==1 ?
+                                    eGidaFsOpenFileFlag_CreateAlways : 0),
+                                eGidaFsNodeFlag_Rall |
+                                  eGidaFsNodeFlag_Wusr);
+  if(gidafs_ret!=eGidaFsError_None) {
+    LOG_ERROR("Unable to open / create block cache file '%s': Error code %u!\n",
+              XMOUNT_CACHE_BLOCK_FILE,
+              gidafs_ret)
+    INITCACHEFILE__CLOSE_CACHE;
     return FALSE;
   }
-  // Same here, ftello64 didn't work at all and returned 0 all the times
-  cachefile_size=ftello(glob_xmount.cache.h_old_cache_file);
-  LOG_DEBUG("Cache file has %zd bytes\n",cachefile_size)
 
-  if(cachefile_size>0) {
-    // Cache file isn't empty, parse block header
-    LOG_DEBUG("Cache file not empty. Parsing block header\n")
-    if(fseeko(glob_xmount.cache.h_old_cache_file,0,SEEK_SET)!=0) {
-      LOG_ERROR("Couldn't seek to beginning of cache file!\n")
+  // Create block cache index file
+  gidafs_ret=GidaFsLib_OpenFile(glob_xmount.cache.h_cache_file,
+                                XMOUNT_CACHE_BLOCK_INDEX_FILE,
+                                &(glob_xmount.cache.h_block_cache_index),
+                                eGidaFsOpenFileFlag_ReadWrite |
+                                  (is_new_cache_file==1 ?
+                                    eGidaFsOpenFileFlag_CreateAlways : 0),
+                                eGidaFsNodeFlag_Rall |
+                                  eGidaFsNodeFlag_Wusr);
+  if(gidafs_ret!=eGidaFsError_None) {
+    LOG_ERROR("Unable to open / create block cache index file '%s': "
+                "Error code %u!\n",
+              XMOUNT_CACHE_BLOCK_FILE,
+              gidafs_ret)
+    INITCACHEFILE__CLOSE_BLOCK_CACHE;
+    INITCACHEFILE__CLOSE_CACHE;
+    return FALSE;
+  }
+
+  // Calculate how many cache blocks are needed and how big the cache block
+  // index must be
+  needed_blocks=image_size/CACHE_BLOCK_SIZE;
+  if((image_size%CACHE_BLOCK_SIZE)!=0) needed_blocks++;
+
+  LOG_DEBUG("Cache blocks: %u (0x%04X) entries using %zd (0x%08zX) bytes\n",
+            needed_blocks,
+            needed_blocks,
+            needed_blocks*sizeof(t_CacheFileBlockIndex),
+            needed_blocks*sizeof(t_CacheFileBlockIndex))
+
+  if(is_new_cache_file==1) {
+    // Generate initial block cache index
+    blockindex_size=needed_blocks*sizeof(t_CacheFileBlockIndex);
+    XMOUNT_MALLOC(p_index_buf,t_CacheFileBlockIndex*,blockindex_size)
+    for(uint64_t i=0;i<needed_blocks;i++) {
+      *(p_index_buf+i)=CACHE_BLOCK_FREE;
+    }
+    gidafs_ret=GidaFsLib_WriteFile(glob_xmount.cache.h_cache_file,
+                                   glob_xmount.cache.h_block_cache_index,
+                                   0,
+                                   blockindex_size,
+                                   p_index_buf,
+                                   &written);
+    if(gidafs_ret!=eGidaFsError_None || written!=blockindex_size) {
+      LOG_ERROR("Unable to generate initial block cache index file '%s': "
+                  "Error code %u!\n",
+                XMOUNT_CACHE_BLOCK_FILE,
+                gidafs_ret)
+      INITCACHEFILE__CLOSE_BLOCK_CACHE_INDEX;
+      INITCACHEFILE__CLOSE_BLOCK_CACHE;
+      INITCACHEFILE__CLOSE_CACHE;
+      free(p_index_buf);
       return FALSE;
     }
-    // Read and check file signature
-    if(fread(&buf,8,1,glob_xmount.cache.h_old_cache_file)!=1 ||
-       buf!=CACHE_FILE_SIGNATURE)
-    {
-      LOG_ERROR("Not an xmount cache file or cache file corrupt!\n")
-      return FALSE;
-    }
-    // Now get cache file version (Has only 32bit!)
-    if(fread(&buf,4,1,glob_xmount.cache.h_old_cache_file)!=1) {
-      LOG_ERROR("Not an xmount cache file or cache file corrupt!\n")
-      return FALSE;
-    }
-    switch((uint32_t)buf) {
-      case 0x00000001:
-        // Old v1 cache file.
-        LOG_ERROR("Unsupported cache file version!\n")
-        LOG_ERROR("Please use xmount-tool to upgrade your cache file.\n")
-        return FALSE;
-      case CUR_CACHE_FILE_VERSION:
-        // Current version
-        if(fseeko(glob_xmount.cache.h_old_cache_file,0,SEEK_SET)!=0) {
-          LOG_ERROR("Couldn't seek to beginning of cache file!\n")
-          return FALSE;
-        }
-        // Alloc memory for header and block index
-        XMOUNT_MALLOC(glob_xmount.cache.p_cache_header,
-                      pts_CacheFileHeader,
-                      cachefile_header_size);
-        memset(glob_xmount.cache.p_cache_header,0,cachefile_header_size);
-        // Read header and block index from file
-        if(fread(glob_xmount.cache.p_cache_header,
-                 cachefile_header_size,
-                 1,
-                 glob_xmount.cache.h_old_cache_file)!=1)
-        {
-          // Cache file isn't big enough
-          LOG_ERROR("Cache file corrupt!\n")
-          return FALSE;
-        }
-        break;
-      default:
-        LOG_ERROR("Unknown cache file version!\n")
-        return FALSE;
-    }
-    // Check if cache file has same block size as we do
-    if(glob_xmount.cache.p_cache_header->BlockSize!=CACHE_BLOCK_SIZE) {
-      LOG_ERROR("Cache file does not use default cache block size!\n")
-      return FALSE;
-    }
-    // Set pointer to block index
-    glob_xmount.cache.p_cache_blkidx=
-      (pts_CacheFileBlockIndex)((void*)glob_xmount.cache.p_cache_header+
-        glob_xmount.cache.p_cache_header->pBlockIndex);
+    free(p_index_buf);
   } else {
-    // New cache file, generate a new block header
-    LOG_DEBUG("Cache file is empty. Generating new block header\n");
-    // Alloc memory for header and block index
-    XMOUNT_MALLOC(glob_xmount.cache.p_cache_header,
-                  pts_CacheFileHeader,
-                  cachefile_header_size)
-    memset(glob_xmount.cache.p_cache_header,0,cachefile_header_size);
-    glob_xmount.cache.p_cache_header->FileSignature=CACHE_FILE_SIGNATURE;
-    glob_xmount.cache.p_cache_header->CacheFileVersion=CUR_CACHE_FILE_VERSION;
-    glob_xmount.cache.p_cache_header->BlockSize=CACHE_BLOCK_SIZE;
-    glob_xmount.cache.p_cache_header->BlockCount=needed_blocks;
-    //glob_xmount.cache.p_cache_header->UsedBlocks=0;
-    // The following pointer is only usuable when reading data from cache file
-    glob_xmount.cache.p_cache_header->pBlockIndex=sizeof(ts_CacheFileHeader);
-    glob_xmount.cache.p_cache_blkidx=
-      (pts_CacheFileBlockIndex)((void*)glob_xmount.cache.p_cache_header+
-        sizeof(ts_CacheFileHeader));
-    glob_xmount.cache.p_cache_header->VdiFileHeaderCached=FALSE;
-    glob_xmount.cache.p_cache_header->pVdiFileHeader=0;
-    glob_xmount.cache.p_cache_header->VmdkFileCached=FALSE;
-    glob_xmount.cache.p_cache_header->VmdkFileSize=0;
-    glob_xmount.cache.p_cache_header->pVmdkFile=0;
-    glob_xmount.cache.p_cache_header->VhdFileHeaderCached=FALSE;
-    glob_xmount.cache.p_cache_header->pVhdFileHeader=0;
-    // Write header to file
-    if(fwrite(glob_xmount.cache.p_cache_header,
-              cachefile_header_size,
-              1,
-              glob_xmount.cache.h_old_cache_file)!=1)
-    {
-      LOG_ERROR("Couldn't write cache file header to file!\n");
+    // Existing cache file, make sure block cache index has correct size
+    gidafs_ret=GidaFsLib_GetFileSize(glob_xmount.cache.h_cache_file,
+                                     glob_xmount.cache.h_block_cache_index,
+                                     &blockindex_size);
+    if(gidafs_ret!=eGidaFsError_None) {
+      LOG_ERROR("Unable to get block cache index file size: Error code %u!\n",
+                gidafs_ret)
+      INITCACHEFILE__CLOSE_BLOCK_CACHE_INDEX;
+      INITCACHEFILE__CLOSE_BLOCK_CACHE;
+      INITCACHEFILE__CLOSE_CACHE;
+      return FALSE;
+    }
+    if(blockindex_size!=(needed_blocks*sizeof(t_CacheFileBlockIndex))) {
+      // TODO: Be more helpfull in error message
+      LOG_ERROR("Block cache index size is incorrect for given input image!\n")
+      INITCACHEFILE__CLOSE_BLOCK_CACHE_INDEX;
+      INITCACHEFILE__CLOSE_BLOCK_CACHE;
+      INITCACHEFILE__CLOSE_CACHE;
       return FALSE;
     }
   }
+
+  // TODO: Check if cache file has same block size as we do
+
+#undef INITCACHEFILE__CLOSE_BLOCK_CACHE_INDEX
+#undef INITCACHEFILE__CLOSE_BLOCK_CACHE
+#undef INITCACHEFILE__CLOSE_CACHE
+
   return TRUE;
 }
 

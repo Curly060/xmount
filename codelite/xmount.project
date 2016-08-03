@@ -1,0 +1,240 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CodeLite_Project Name="xmount" InternalType="Console">
+  <Description/>
+  <Dependencies/>
+  <VirtualDirectory Name="src">
+    <File Name="../src/CMakeLists.txt"/>
+    <File Name="../src/macros.h"/>
+    <File Name="../src/md5.c"/>
+    <File Name="../src/md5.h"/>
+    <File Name="../src/xmount.c"/>
+    <File Name="../src/xmount.h"/>
+  </VirtualDirectory>
+  <VirtualDirectory Name="libxmount">
+    <File Name="../libxmount/endianness.h"/>
+    <File Name="../libxmount/libxmount.c"/>
+    <File Name="../libxmount/libxmount.h"/>
+  </VirtualDirectory>
+  <VirtualDirectory Name="libxmount_input">
+    <File Name="../libxmount_input/CMakeLists.txt"/>
+    <File Name="../libxmount_input/libxmount_input.h"/>
+    <VirtualDirectory Name="libxmount_input_aaff">
+      <File Name="../libxmount_input/libxmount_input_aaff/CMakeLists.txt"/>
+      <File Name="../libxmount_input/libxmount_input_aaff/libxmount_input_aaff.c"/>
+      <File Name="../libxmount_input/libxmount_input_aaff/libxmount_input_aaff.h"/>
+    </VirtualDirectory>
+    <VirtualDirectory Name="libxmount_input_aewf">
+      <File Name="../libxmount_input/libxmount_input_aewf/CMakeLists.txt"/>
+      <File Name="../libxmount_input/libxmount_input_aewf/libxmount_input_aewf.c"/>
+      <File Name="../libxmount_input/libxmount_input_aewf/libxmount_input_aewf.h"/>
+    </VirtualDirectory>
+    <VirtualDirectory Name="libxmount_input_aff">
+      <File Name="../libxmount_input/libxmount_input_aff/CMakeLists.txt"/>
+      <File Name="../libxmount_input/libxmount_input_aff/libxmount_input_aff.c"/>
+      <File Name="../libxmount_input/libxmount_input_aff/libxmount_input_aff.h"/>
+    </VirtualDirectory>
+    <VirtualDirectory Name="libxmount_input_ewf">
+      <File Name="../libxmount_input/libxmount_input_ewf/CMakeLists.txt"/>
+      <File Name="../libxmount_input/libxmount_input_ewf/libxmount_input_ewf.c"/>
+      <File Name="../libxmount_input/libxmount_input_ewf/libxmount_input_ewf.h"/>
+    </VirtualDirectory>
+    <VirtualDirectory Name="libxmount_input_raw">
+      <File Name="../libxmount_input/libxmount_input_raw/CMakeLists.txt"/>
+      <File Name="../libxmount_input/libxmount_input_raw/libxmount_input_raw.c"/>
+      <File Name="../libxmount_input/libxmount_input_raw/libxmount_input_raw.h"/>
+    </VirtualDirectory>
+  </VirtualDirectory>
+  <VirtualDirectory Name="libxmount_morphing">
+    <VirtualDirectory Name="libxmount_morphing_combine">
+      <File Name="../libxmount_morphing/libxmount_morphing_combine/CMakeLists.txt"/>
+      <File Name="../libxmount_morphing/libxmount_morphing_combine/libxmount_morphing_combine.c"/>
+      <File Name="../libxmount_morphing/libxmount_morphing_combine/libxmount_morphing_combine.h"/>
+    </VirtualDirectory>
+    <VirtualDirectory Name="libxmount_morphing_raid">
+      <File Name="../libxmount_morphing/libxmount_morphing_raid/CMakeLists.txt"/>
+      <File Name="../libxmount_morphing/libxmount_morphing_raid/libxmount_morphing_raid.c"/>
+      <File Name="../libxmount_morphing/libxmount_morphing_raid/libxmount_morphing_raid.h"/>
+    </VirtualDirectory>
+    <VirtualDirectory Name="libxmount_morphing_unallocated">
+      <File Name="../libxmount_morphing/libxmount_morphing_unallocated/CMakeLists.txt"/>
+      <File Name="../libxmount_morphing/libxmount_morphing_unallocated/fat_functions.c"/>
+      <File Name="../libxmount_morphing/libxmount_morphing_unallocated/fat_functions.h"/>
+      <File Name="../libxmount_morphing/libxmount_morphing_unallocated/hfs_functions.c"/>
+      <File Name="../libxmount_morphing/libxmount_morphing_unallocated/hfs_functions.h"/>
+      <File Name="../libxmount_morphing/libxmount_morphing_unallocated/libxmount_morphing_unallocated.c"/>
+      <File Name="../libxmount_morphing/libxmount_morphing_unallocated/libxmount_morphing_unallocated.h"/>
+      <File Name="../libxmount_morphing/libxmount_morphing_unallocated/libxmount_morphing_unallocated_retvalues.h"/>
+      <File Name="../libxmount_morphing/libxmount_morphing_unallocated/ntfs_functions.c"/>
+      <File Name="../libxmount_morphing/libxmount_morphing_unallocated/ntfs_functions.h"/>
+    </VirtualDirectory>
+    <File Name="../libxmount_morphing/CMakeLists.txt"/>
+    <File Name="../libxmount_morphing/libxmount_morphing.h"/>
+  </VirtualDirectory>
+  <Settings Type="Executable">
+    <GlobalSettings>
+      <Compiler Options="" C_Options="" Assembler="">
+        <IncludePath Value="."/>
+      </Compiler>
+      <Linker Options="">
+        <LibraryPath Value="."/>
+      </Linker>
+      <ResourceCompiler Options=""/>
+    </GlobalSettings>
+    <Configuration Name="Debug_Linux" CompilerType="gnu gcc" DebuggerType="GNU gdb debugger" Type="Executable" BuildCmpWithGlobalSettings="append" BuildLnkWithGlobalSettings="append" BuildResWithGlobalSettings="append">
+      <Compiler Options="-g;-O0;-Wall" C_Options="-g;-O0;-Wall" Assembler="" Required="yes" PreCompiledHeader="" PCHInCommandLine="no" PCHFlags="" PCHFlagsPolicy="0">
+        <IncludePath Value="."/>
+      </Compiler>
+      <Linker Options="" Required="yes"/>
+      <ResourceCompiler Options="" Required="no"/>
+      <General OutputFile="$(IntermediateDirectory)/$(ProjectName)" IntermediateDirectory="./Debug" Command="./build-debug/HelloWorld" CommandArguments="" UseSeparateDebugArgs="no" DebugArguments="" WorkingDirectory="" PauseExecWhenProcTerminates="yes" IsGUIProgram="no" IsEnabled="yes"/>
+      <Environment EnvVarSetName="&lt;Use Defaults&gt;" DbgSetName="&lt;Use Defaults&gt;">
+        <![CDATA[]]>
+      </Environment>
+      <Debugger IsRemote="no" RemoteHostName="" RemoteHostPort="" DebuggerPath="" IsExtended="no">
+        <DebuggerSearchPaths/>
+        <PostConnectCommands/>
+        <StartupCommands/>
+      </Debugger>
+      <PreBuild/>
+      <PostBuild/>
+      <CustomBuild Enabled="yes">
+        <Target Name="cmake">cmake ../.. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=1</Target>
+        <RebuildCommand>make clean &amp;&amp; make -j4</RebuildCommand>
+        <CleanCommand>make clean</CleanCommand>
+        <BuildCommand>make -j4</BuildCommand>
+        <PreprocessFileCommand/>
+        <SingleFileCommand/>
+        <MakefileGenerationCommand/>
+        <ThirdPartyToolName>None</ThirdPartyToolName>
+        <WorkingDirectory>$(WorkspacePath)/build-debug</WorkingDirectory>
+      </CustomBuild>
+      <AdditionalRules>
+        <CustomPostBuild/>
+        <CustomPreBuild/>
+      </AdditionalRules>
+      <Completion EnableCpp11="no" EnableCpp14="no">
+        <ClangCmpFlagsC/>
+        <ClangCmpFlags/>
+        <ClangPP/>
+        <SearchPaths/>
+      </Completion>
+    </Configuration>
+    <Configuration Name="Debug_Windows" CompilerType="gnu gcc" DebuggerType="GNU gdb debugger" Type="Executable" BuildCmpWithGlobalSettings="append" BuildLnkWithGlobalSettings="append" BuildResWithGlobalSettings="append">
+      <Compiler Options="-g;-O0;-Wall" C_Options="-g;-O0;-Wall" Assembler="" Required="yes" PreCompiledHeader="" PCHInCommandLine="no" PCHFlags="" PCHFlagsPolicy="0">
+        <IncludePath Value="."/>
+      </Compiler>
+      <Linker Options="" Required="yes"/>
+      <ResourceCompiler Options="" Required="no"/>
+      <General OutputFile="$(IntermediateDirectory)/$(ProjectName)" IntermediateDirectory="./Debug" Command="./build-debug/HelloWorld" CommandArguments="" UseSeparateDebugArgs="no" DebugArguments="" WorkingDirectory="" PauseExecWhenProcTerminates="yes" IsGUIProgram="no" IsEnabled="yes"/>
+      <Environment EnvVarSetName="&lt;Use Defaults&gt;" DbgSetName="&lt;Use Defaults&gt;">
+        <![CDATA[]]>
+      </Environment>
+      <Debugger IsRemote="no" RemoteHostName="" RemoteHostPort="" DebuggerPath="" IsExtended="no">
+        <DebuggerSearchPaths/>
+        <PostConnectCommands/>
+        <StartupCommands/>
+      </Debugger>
+      <PreBuild/>
+      <PostBuild/>
+      <CustomBuild Enabled="yes">
+        <Target Name="cmake">cmake .. -G "MinGW Makefiles"  -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=1</Target>
+        <RebuildCommand>mingw32-make clean &amp;&amp; mingw32-make -j4</RebuildCommand>
+        <CleanCommand>mingw32-make clean</CleanCommand>
+        <BuildCommand>mingw32-make -j4</BuildCommand>
+        <PreprocessFileCommand/>
+        <SingleFileCommand/>
+        <MakefileGenerationCommand/>
+        <ThirdPartyToolName>None</ThirdPartyToolName>
+        <WorkingDirectory>$(WorkspacePath)/build-debug</WorkingDirectory>
+      </CustomBuild>
+      <AdditionalRules>
+        <CustomPostBuild/>
+        <CustomPreBuild/>
+      </AdditionalRules>
+      <Completion EnableCpp11="no" EnableCpp14="no">
+        <ClangCmpFlagsC/>
+        <ClangCmpFlags/>
+        <ClangPP/>
+        <SearchPaths/>
+      </Completion>
+    </Configuration>
+    <Configuration Name="Release_Linux" CompilerType="gnu gcc" DebuggerType="GNU gdb debugger" Type="Executable" BuildCmpWithGlobalSettings="append" BuildLnkWithGlobalSettings="append" BuildResWithGlobalSettings="append">
+      <Compiler Options="-g;-O0;-Wall" C_Options="-g;-O0;-Wall" Assembler="" Required="yes" PreCompiledHeader="" PCHInCommandLine="no" PCHFlags="" PCHFlagsPolicy="0">
+        <IncludePath Value="."/>
+      </Compiler>
+      <Linker Options="" Required="yes"/>
+      <ResourceCompiler Options="" Required="no"/>
+      <General OutputFile="$(IntermediateDirectory)/$(ProjectName)" IntermediateDirectory="./Release" Command="./build-release/HelloWorld" CommandArguments="" UseSeparateDebugArgs="no" DebugArguments="" WorkingDirectory="" PauseExecWhenProcTerminates="yes" IsGUIProgram="no" IsEnabled="yes"/>
+      <Environment EnvVarSetName="&lt;Use Defaults&gt;" DbgSetName="&lt;Use Defaults&gt;">
+        <![CDATA[]]>
+      </Environment>
+      <Debugger IsRemote="no" RemoteHostName="" RemoteHostPort="" DebuggerPath="" IsExtended="no">
+        <DebuggerSearchPaths/>
+        <PostConnectCommands/>
+        <StartupCommands/>
+      </Debugger>
+      <PreBuild/>
+      <PostBuild/>
+      <CustomBuild Enabled="yes">
+        <Target Name="cmake">cmake ../.. -DCMAKE_EXPORT_COMPILE_COMMANDS=1</Target>
+        <RebuildCommand>make clean &amp;&amp; make -j4</RebuildCommand>
+        <CleanCommand>make clean</CleanCommand>
+        <BuildCommand>make -j4</BuildCommand>
+        <PreprocessFileCommand/>
+        <SingleFileCommand/>
+        <MakefileGenerationCommand/>
+        <ThirdPartyToolName>None</ThirdPartyToolName>
+        <WorkingDirectory>$(WorkspacePath)/build-release</WorkingDirectory>
+      </CustomBuild>
+      <AdditionalRules>
+        <CustomPostBuild/>
+        <CustomPreBuild/>
+      </AdditionalRules>
+      <Completion EnableCpp11="no" EnableCpp14="no">
+        <ClangCmpFlagsC/>
+        <ClangCmpFlags/>
+        <ClangPP/>
+        <SearchPaths/>
+      </Completion>
+    </Configuration>
+    <Configuration Name="Release_Windows" CompilerType="gnu gcc" DebuggerType="GNU gdb debugger" Type="Executable" BuildCmpWithGlobalSettings="append" BuildLnkWithGlobalSettings="append" BuildResWithGlobalSettings="append">
+      <Compiler Options="-g;-O0;-Wall" C_Options="-g;-O0;-Wall" Assembler="" Required="yes" PreCompiledHeader="" PCHInCommandLine="no" PCHFlags="" PCHFlagsPolicy="0">
+        <IncludePath Value="."/>
+      </Compiler>
+      <Linker Options="" Required="yes"/>
+      <ResourceCompiler Options="" Required="no"/>
+      <General OutputFile="$(IntermediateDirectory)/$(ProjectName)" IntermediateDirectory="./Release" Command="./build-release/HelloWorld" CommandArguments="" UseSeparateDebugArgs="no" DebugArguments="" WorkingDirectory="" PauseExecWhenProcTerminates="yes" IsGUIProgram="no" IsEnabled="yes"/>
+      <Environment EnvVarSetName="&lt;Use Defaults&gt;" DbgSetName="&lt;Use Defaults&gt;">
+        <![CDATA[]]>
+      </Environment>
+      <Debugger IsRemote="no" RemoteHostName="" RemoteHostPort="" DebuggerPath="" IsExtended="no">
+        <DebuggerSearchPaths/>
+        <PostConnectCommands/>
+        <StartupCommands/>
+      </Debugger>
+      <PreBuild/>
+      <PostBuild/>
+      <CustomBuild Enabled="yes">
+        <Target Name="cmake">cmake .. -G "MinGW Makefiles" -DCMAKE_EXPORT_COMPILE_COMMANDS=1</Target>
+        <RebuildCommand>mingw32-make clean &amp;&amp; mingw32-make -j4</RebuildCommand>
+        <CleanCommand>mingw32-make clean</CleanCommand>
+        <BuildCommand>mingw32-make -j4</BuildCommand>
+        <PreprocessFileCommand/>
+        <SingleFileCommand/>
+        <MakefileGenerationCommand/>
+        <ThirdPartyToolName>None</ThirdPartyToolName>
+        <WorkingDirectory>$(WorkspacePath)/build-release</WorkingDirectory>
+      </CustomBuild>
+      <AdditionalRules>
+        <CustomPostBuild/>
+        <CustomPreBuild/>
+      </AdditionalRules>
+      <Completion EnableCpp11="no" EnableCpp14="no">
+        <ClangCmpFlagsC/>
+        <ClangCmpFlags/>
+        <ClangPP/>
+        <SearchPaths/>
+      </Completion>
+    </Configuration>
+  </Settings>
+</CodeLite_Project>

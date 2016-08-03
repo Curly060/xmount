@@ -2686,11 +2686,15 @@ static void InitResources() {
   glob_xmount.morphing.input_image_functions.Read=&LibXmount_Morphing_Read;
 
   // Cache
+  glob_xmount.cache.overwrite_cache=FALSE;
   glob_xmount.cache.p_cache_file=NULL;
+  glob_xmount.cache.h_cache_file=NULL;
+  glob_xmount.cache.h_block_cache=NULL;
+  glob_xmount.cache.h_block_cache_index=NULL;
+  // TODO: Remove
   glob_xmount.cache.h_old_cache_file=NULL;
   glob_xmount.cache.p_cache_header=NULL;
   glob_xmount.cache.p_cache_blkidx=NULL;
-  glob_xmount.cache.overwrite_cache=FALSE;
 
   // Output
 #ifndef __APPLE__
@@ -2730,6 +2734,7 @@ static void InitResources() {
  */
 static void FreeResources() {
   int ret;
+  teGidaFsError gidafs_ret=eGidaFsError_None;
 
   LOG_DEBUG("Freeing all resources\n");
 
@@ -2765,13 +2770,32 @@ static void FreeResources() {
     free(glob_xmount.output.p_virtual_image_path);
 
   // Cache
-  if(glob_xmount.cache.h_old_cache_file!=NULL)
-    fclose(glob_xmount.cache.h_old_cache_file);
-  if(glob_xmount.cache.p_cache_header!=NULL)
-    free(glob_xmount.cache.p_cache_header);
-  // glob_xmount.cache.p_cache_blkidx is freed by the above call
-  if(glob_xmount.cache.p_cache_file!=NULL)
-    free(glob_xmount.cache.p_cache_file);
+  if(glob_xmount.cache.h_cache_file!=NULL) {
+    if(glob_xmount.cache.h_block_cache_index!=NULL) {
+      gidafs_ret=GidaFsLib_CloseFile(glob_xmount.cache.h_cache_file,
+                                     &(glob_xmount.cache.h_block_cache_index));
+      if(gidafs_ret!=eGidaFsError_None) {
+        LOG_ERROR("Unable to close block cache index file: Error code %u: "
+                    "Ignoring!\n",
+                  gidafs_ret)
+      }
+    }
+    if(glob_xmount.cache.h_block_cache!=NULL) {
+      gidafs_ret=GidaFsLib_CloseFile(glob_xmount.cache.h_cache_file,
+                                     &(glob_xmount.cache.h_block_cache));
+      if(gidafs_ret!=eGidaFsError_None) {
+        LOG_ERROR("Unable to close block cache file: Error code %u: "
+                    "Ignoring!\n",
+                  gidafs_ret)
+      }
+    }
+    gidafs_ret=GidaFsLib_CloseFs(&(glob_xmount.cache.h_cache_file));
+    if(gidafs_ret!=eGidaFsError_None) {
+      LOG_ERROR("Unable to close cache file: Error code %u: Ignoring!\n",
+                gidafs_ret)
+    }
+  }
+  if(glob_xmount.cache.p_cache_file!=NULL) free(glob_xmount.cache.p_cache_file);
 
   // Morphing
   if(glob_xmount.morphing.p_functions!=NULL) {

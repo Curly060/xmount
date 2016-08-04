@@ -96,6 +96,7 @@ static int InitCacheFile();
 static int LoadLibs();
 static int FindInputLib(pts_InputImage);
 static int FindMorphingLib();
+static int FindOutputLib();
 static void InitResources();
 static void FreeResources();
 static int SplitLibraryParameters(char*, uint32_t*, pts_LibXmountOptions**);
@@ -103,6 +104,10 @@ static int SplitLibraryParameters(char*, uint32_t*, pts_LibXmountOptions**);
 static int LibXmount_Morphing_ImageCount(uint64_t*);
 static int LibXmount_Morphing_Size(uint64_t, uint64_t*);
 static int LibXmount_Morphing_Read(uint64_t, char*, off_t, size_t, size_t*);
+// Functions exported to LibXmount_Output
+static int LibXmount_Output_Size(uint64_t*);
+static int LibXmount_Output_Read(char*, off_t, size_t, size_t*);
+static int LibXmount_Output_Write(char*, off_t, size_t, size_t*);
 // Functions implementing FUSE functions
 static int FuseGetAttr(const char*, struct stat*);
 static int FuseMkDir(const char*, mode_t);
@@ -210,8 +215,21 @@ static void PrintUsage(char *p_prog_name) {
   printf("      <otype> can be ");
 
   // List supported output formats
-  printf("\"raw\", \"dmg\", \"vdi\", \"vhd\", \"vmdk\", \"vmdks\".\n");
+  first=1;
+  for(uint32_t i=0;i<glob_xmount.output.libs_count;i++) {
+    p_buf=glob_xmount.output.pp_libs[i]->p_supported_output_formats;
+    while(*p_buf!='\0') {
+      if(first==1) {
+        printf("\"%s\"",p_buf);
+        first=0;
+      } else printf(", \"%s\"",p_buf);
+      p_buf+=(strlen(p_buf)+1);
+    }
+  }
+  printf(".\n");
 
+  printf("    --outopts <oopts> : Specify output library specific "
+           "options.\n");
   printf("    --owcache <file> : Same as --cache <file> but overwrites "
            "existing cache file.\n");
   printf("    --sizelimit <size> : The data end of input image(s) is set to no "
@@ -236,7 +254,7 @@ static void PrintUsage(char *p_prog_name) {
            "options are listed below.\n");
   printf("\n");
 
-  // List input and morphing lib options
+  // List input, morphing and output lib options
   for(uint32_t i=0;i<glob_xmount.input.libs_count;i++) {
     ret=glob_xmount.input.pp_libs[i]->
           lib_functions.OptionsHelp((const char**)&p_buf);
@@ -269,6 +287,20 @@ static void PrintUsage(char *p_prog_name) {
     }
     if(p_buf==NULL) continue;
     printf("  - %s\n",glob_xmount.morphing.pp_libs[i]->p_name);
+    printf("%s",p_buf);
+    printf("\n");
+  }
+  for(uint32_t i=0;i<glob_xmount.output.libs_count;i++) {
+    ret=glob_xmount.output.pp_libs[i]->
+          lib_functions.OptionsHelp((const char**)&p_buf);
+    if(ret!=0) {
+      LOG_ERROR("Unable to get options help for library '%s': %s!\n",
+                glob_xmount.output.pp_libs[i]->p_name,
+                glob_xmount.output.pp_libs[i]->
+                  lib_functions.GetErrorMessage(ret));
+    }
+    if(p_buf==NULL) continue;
+    printf("  - %s\n",glob_xmount.output.pp_libs[i]->p_name);
     printf("%s",p_buf);
     printf("\n");
   }
@@ -596,40 +628,39 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
         LOG_DEBUG("Setting input image offset to \"%" PRIu64 "\"\n",
                   glob_xmount.input.image_offset)
       } else if(strcmp(pp_argv[i],"--out")==0) {
-        // Specify output image type
-        // Next parameter must be image type
+        // Set output lib to use
         if((i+1)<argc) {
           i++;
-          if(strcmp(pp_argv[i],"raw")==0) {
-            glob_xmount.output.VirtImageType=VirtImageType_DD;
-            LOG_DEBUG("Setting virtual image type to RAW\n")
-          } else if(strcmp(pp_argv[i],"dd")==0) {
-            glob_xmount.output.VirtImageType=VirtImageType_DD;
-            LOG_WARNING("Using '--out dd' is deprecated and will be removed in "
-                          "the next release. "
-                          "Please use '--out raw' instead.\n");
-            LOG_DEBUG("Setting virtual image type to RAW\n")
-          } else if(strcmp(pp_argv[i],"dmg")==0) {
-            glob_xmount.output.VirtImageType=VirtImageType_DMG;
-            LOG_DEBUG("Setting virtual image type to DMG\n")
-          } else if(strcmp(pp_argv[i],"vdi")==0) {
-            glob_xmount.output.VirtImageType=VirtImageType_VDI;
-            LOG_DEBUG("Setting virtual image type to VDI\n")
-          } else if(strcmp(pp_argv[i],"vhd")==0) {
-            glob_xmount.output.VirtImageType=VirtImageType_VHD;
-            LOG_DEBUG("Setting virtual image type to VHD\n")
-          } else if(strcmp(pp_argv[i],"vmdk")==0) {
-            glob_xmount.output.VirtImageType=VirtImageType_VMDK;
-            LOG_DEBUG("Setting virtual image type to VMDK\n")
-          } else if(strcmp(pp_argv[i],"vmdks")==0) {
-            glob_xmount.output.VirtImageType=VirtImageType_VMDKS;
-            LOG_DEBUG("Setting virtual image type to VMDKS\n")
+          if(glob_xmount.output.p_output_format==NULL) {
+            XMOUNT_STRSET(glob_xmount.output.p_output_format,pp_argv[i]);
           } else {
-            LOG_ERROR("Unknown output image type \"%s\"!\n",pp_argv[i])
+            LOG_ERROR("You can only specify --out once!")
             return FALSE;
           }
         } else {
-          LOG_ERROR("You must specify an output image type!\n");
+          LOG_ERROR("You must specify an output format!\n");
+          return FALSE;
+        }
+      } else if(strcmp(pp_argv[i],"--outopts")==0) {
+        // Set output lib options
+        if((i+1)<argc) {
+          i++;
+          if(glob_xmount.output.pp_lib_params==NULL) {
+            if(SplitLibraryParameters(pp_argv[i],
+                                      &(glob_xmount.output.lib_params_count),
+                                      &(glob_xmount.output.pp_lib_params)
+                                     )==FALSE)
+            {
+              LOG_ERROR("Unable to parse output library options '%s'!\n",
+                        pp_argv[i]);
+              return FALSE;
+            }
+          } else {
+            LOG_ERROR("You can only specify --outopts once!")
+            return FALSE;
+          }
+        } else {
+          LOG_ERROR("You must specify special output lib params!\n");
           return FALSE;
         }
       } else if(strcmp(pp_argv[i],"--owcache")==0) {
@@ -2354,11 +2385,15 @@ static int LoadLibs() {
   t_LibXmount_Morphing_GetApiVersion pfun_morphing_GetApiVersion;
   t_LibXmount_Morphing_GetSupportedTypes pfun_morphing_GetSupportedTypes;
   t_LibXmount_Morphing_GetFunctions pfun_morphing_GetFunctions;
+  t_LibXmount_Output_GetApiVersion pfun_output_GetApiVersion;
+  t_LibXmount_Output_GetSupportedFormats pfun_output_GetSupportedFormats;
+  t_LibXmount_Output_GetFunctions pfun_output_GetFunctions;
   const char *p_supported_formats=NULL;
   const char *p_buf;
   uint32_t supported_formats_len=0;
   pts_InputLib p_input_lib=NULL;
   pts_MorphingLib p_morphing_lib=NULL;
+  pts_OutputLib p_output_lib=NULL;
 
   LOG_DEBUG("Searching for xmount libraries in '%s'.\n",
             XMOUNT_LIBRARY_PATH);
@@ -2571,6 +2606,87 @@ static int LoadLibs() {
         p_morphing_lib;
 
       LOG_DEBUG("Morphing library '%s' loaded successfully\n",p_dirent->d_name);
+    } if(strncmp(p_dirent->d_name,"libxmount_output_",17)==0) {
+      // Found possible output lib. Try to load it
+      LIBXMOUNT_LOAD(p_library_path);
+
+      // Load library symbols
+      LIBXMOUNT_LOAD_SYMBOL("LibXmount_Output_GetApiVersion",
+                            pfun_output_GetApiVersion);
+
+      // Check library's API version
+      if(pfun_output_GetApiVersion()!=LIBXMOUNT_OUTPUT_API_VERSION) {
+        LOG_DEBUG("Failed! Wrong API version.\n");
+        LOG_ERROR("Unable to load output library '%s'. Wrong API version\n",
+                  p_library_path);
+        dlclose(p_libxmount);
+        continue;
+      }
+
+      LIBXMOUNT_LOAD_SYMBOL("LibXmount_Output_GetSupportedFormats",
+                            pfun_output_GetSupportedFormats);
+      LIBXMOUNT_LOAD_SYMBOL("LibXmount_Output_GetFunctions",
+                            pfun_output_GetFunctions);
+
+      // Construct new entry for our library list
+      XMOUNT_MALLOC(p_output_lib,pts_OutputLib,sizeof(ts_OutputLib));
+      // Initialize lib_functions structure to NULL
+      memset(&(p_output_lib->lib_functions),
+             0,
+             sizeof(ts_LibXmountOutput_Functions));
+
+      // Set name and handle
+      XMOUNT_STRSET(p_output_lib->p_name,p_dirent->d_name);
+      p_output_lib->p_lib=p_libxmount;
+
+      // Get and set supported types
+      p_supported_formats=pfun_output_GetSupportedFormats();
+      supported_formats_len=0;
+      p_buf=p_supported_formats;
+      while(*p_buf!='\0') {
+        supported_formats_len+=(strlen(p_buf)+1);
+        p_buf+=(strlen(p_buf)+1);
+      }
+      supported_formats_len++;
+      XMOUNT_MALLOC(p_output_lib->p_supported_output_formats,
+                    char*,
+                    supported_formats_len);
+      memcpy(p_output_lib->p_supported_output_formats,
+             p_supported_formats,
+             supported_formats_len);
+
+      // Get, set and check lib_functions
+      pfun_output_GetFunctions(&(p_output_lib->lib_functions));
+      if(p_output_lib->lib_functions.CreateHandle==NULL ||
+         p_output_lib->lib_functions.DestroyHandle==NULL ||
+         p_output_lib->lib_functions.Transform==NULL ||
+         p_output_lib->lib_functions.Size==NULL ||
+         p_output_lib->lib_functions.Read==NULL ||
+         p_output_lib->lib_functions.Write==NULL ||
+         p_output_lib->lib_functions.OptionsHelp==NULL ||
+         p_output_lib->lib_functions.OptionsParse==NULL ||
+         p_output_lib->lib_functions.GetInfofileContent==NULL ||
+         p_output_lib->lib_functions.GetErrorMessage==NULL ||
+         p_output_lib->lib_functions.FreeBuffer==NULL)
+      {
+        LOG_DEBUG("Missing implemention of one or more functions in lib %s!\n",
+                  p_dirent->d_name);
+        free(p_output_lib->p_supported_output_formats);
+        free(p_output_lib->p_name);
+        free(p_output_lib);
+        dlclose(p_libxmount);
+        continue;
+      }
+
+      // Add entry to the input library list
+      XMOUNT_REALLOC(glob_xmount.output.pp_libs,
+                     pts_OutputLib*,
+                     sizeof(pts_OutputLib)*
+                       (glob_xmount.output.libs_count+1));
+      glob_xmount.output.pp_libs[glob_xmount.output.libs_count++]=
+        p_output_lib;
+
+      LOG_DEBUG("Output library '%s' loaded successfully\n",p_dirent->d_name);
     } else {
       LOG_DEBUG("Ignoring '%s'.\n",p_dirent->d_name);
       continue;
@@ -2580,14 +2696,17 @@ static int LoadLibs() {
 #undef LIBXMOUNT_LOAD_SYMBOL
 #undef LIBXMOUNT_LOAD
 
-  LOG_DEBUG("A total of %u input libs and %u morphing libs were loaded.\n",
+  LOG_DEBUG("A total of %u input libs, %u morphing libs and %u output libs "
+              "were loaded.\n",
             glob_xmount.input.libs_count,
-            glob_xmount.morphing.libs_count);
+            glob_xmount.morphing.libs_count,
+            glob_xmount.output.libs_count);
 
   free(p_library_path);
   closedir(p_dir);
   return ((glob_xmount.input.libs_count>0 &&
-           glob_xmount.morphing.libs_count>0) ? TRUE : FALSE);
+           glob_xmount.morphing.libs_count>0 &&
+           glob_xmount.output.libs_count>0) ? TRUE : FALSE);
 }
 
 //! Search an appropriate input lib for specified input type
@@ -2655,7 +2774,41 @@ static int FindMorphingLib() {
 
   LOG_DEBUG("Couldn't find any suitable library.\n");
 
-  // No library supporting input type found
+  // No library supporting morph type found
+  return FALSE;
+}
+
+//! Search an appropriate output lib for the specified output format
+/*!
+ * \return TRUE on success, FALSE on error
+ */
+static int FindOutputLib() {
+  char *p_buf;
+
+  LOG_DEBUG("Trying to find suitable library for output format '%s'.\n",
+            glob_xmount.output.p_output_format);
+
+  // Loop over all loaded output libs
+  for(uint32_t i=0;i<glob_xmount.output.libs_count;i++) {
+    LOG_DEBUG("Checking output library %s\n",
+              glob_xmount.output.pp_libs[i]->p_name);
+    p_buf=glob_xmount.output.pp_libs[i]->p_supported_output_formats;
+    while(*p_buf!='\0') {
+      if(strcmp(p_buf,glob_xmount.output.p_output_format)==0) {
+        // Library supports output type, set lib functions
+        LOG_DEBUG("Output library '%s' pretends to handle that output format.\n",
+                  glob_xmount.output.pp_libs[i]->p_name);
+        glob_xmount.output.p_functions=
+          &(glob_xmount.output.pp_libs[i]->lib_functions);
+        return TRUE;
+      }
+      p_buf+=(strlen(p_buf)+1);
+    }
+  }
+
+  LOG_DEBUG("Couldn't find any suitable library.\n");
+
+  // No library supporting output format found
   return FALSE;
 }
 
@@ -2697,6 +2850,16 @@ static void InitResources() {
   glob_xmount.cache.p_cache_blkidx=NULL;
 
   // Output
+  glob_xmount.output.libs_count=0;
+  glob_xmount.output.pp_libs=NULL;
+  glob_xmount.output.p_output_format=NULL;
+  glob_xmount.output.lib_params_count=0;
+  glob_xmount.output.pp_lib_params=NULL;
+  glob_xmount.output.p_handle=NULL;
+  glob_xmount.output.p_functions=NULL;
+  glob_xmount.output.input_functions.Size=&LibXmount_Output_Size;
+  glob_xmount.output.input_functions.Read=&LibXmount_Output_Read;
+  glob_xmount.output.input_functions.Write=&LibXmount_Output_Write;
 #ifndef __APPLE__
   glob_xmount.output.VirtImageType=VirtImageType_DD;
 #else
@@ -2746,6 +2909,38 @@ static void FreeResources() {
   if(glob_xmount.p_mountpoint!=NULL) free(glob_xmount.p_mountpoint);
 
   // Output
+  if(glob_xmount.output.p_functions!=NULL) {
+    if(glob_xmount.output.p_handle!=NULL) {
+      // Destroy output handle
+      ret=glob_xmount.output.p_functions->
+            DestroyHandle(&(glob_xmount.output.p_handle));
+      if(ret!=0) {
+        LOG_ERROR("Unable to destroy output handle: %s!\n",
+                  glob_xmount.output.p_functions->GetErrorMessage(ret));
+      }
+    }
+  }
+  if(glob_xmount.output.pp_lib_params!=NULL) {
+    for(uint32_t i=0;i<glob_xmount.output.lib_params_count;i++)
+      free(glob_xmount.output.pp_lib_params[i]);
+    free(glob_xmount.output.pp_lib_params);
+  }
+  if(glob_xmount.output.p_output_format!=NULL)
+    free(glob_xmount.output.p_output_format);
+  if(glob_xmount.output.pp_libs!=NULL) {
+    // Unload output libs
+    for(uint32_t i=0;i<glob_xmount.output.libs_count;i++) {
+      if(glob_xmount.output.pp_libs[i]==NULL) continue;
+      if(glob_xmount.output.pp_libs[i]->p_supported_output_formats!=NULL)
+        free(glob_xmount.output.pp_libs[i]->p_supported_output_formats);
+      if(glob_xmount.output.pp_libs[i]->p_lib!=NULL)
+        dlclose(glob_xmount.output.pp_libs[i]->p_lib);
+      if(glob_xmount.output.pp_libs[i]->p_name!=NULL)
+        free(glob_xmount.output.pp_libs[i]->p_name);
+      free(glob_xmount.output.pp_libs[i]);
+    }
+    free(glob_xmount.output.pp_libs);
+  }
   if(glob_xmount.output.vmdk.p_vmdk_lockfile_name!=NULL)
     free(glob_xmount.output.vmdk.p_vmdk_lockfile_name);
   if(glob_xmount.output.vmdk.p_vmdk_lockfile_data!=NULL)
@@ -3027,6 +3222,56 @@ static int LibXmount_Morphing_Read(uint64_t image,
                            offset,
                            count,
                            p_read);
+}
+
+/*******************************************************************************
+ * LibXmount_Output function implementation
+ ******************************************************************************/
+//! Function to get the size of the morphed image
+/*!
+ * \param p_size Pointer to store morphed image's size to
+ * \return 0 on success
+ */
+static int LibXmount_Output_Size(uint64_t *p_size) {
+  return glob_xmount.output.p_functions->Size(glob_xmount.output.p_handle,
+                                              p_size);
+}
+
+//! Function to read data from the morphed image
+/*!
+ * \param p_buf Buffer to store read data to
+ * \param offset Position at which to start reading
+ * \param count Amount of bytes to read
+ * \param p_read Number of read bytes on success
+ * \return 0 on success or negated error code on error
+ */
+static int LibXmount_Output_Read(char *p_buf,
+                                 off_t offset,
+                                 size_t count,
+                                 size_t *p_read)
+{
+  return glob_xmount.morphing.p_functions->Read(glob_xmount.output.p_handle,
+                                                p_buf,
+                                                offset,
+                                                count,
+                                                p_read);
+}
+
+//! Function to write data to the morphed image
+/*!
+ * \param p_buf Buffer with data to write
+ * \param offset Position at which to start writing
+ * \param count Amount of bytes to write
+ * \param p_written Number of written bytes on success
+ * \return 0 on success or negated error code on error
+ */
+static int LibXmount_Output_Write(char *p_buf,
+                                  off_t offset,
+                                  size_t count,
+                                  size_t *p_written)
+{
+  // TODO: Implement !!!
+  return -EIO;
 }
 
 /*******************************************************************************

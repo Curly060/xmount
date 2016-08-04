@@ -20,6 +20,7 @@
 
 #include "../libxmount_input/libxmount_input.h"
 #include "../libxmount_morphing/libxmount_morphing.h"
+#include "../libxmount_output/libxmount_output.h"
 
 #undef FALSE
 #undef TRUE
@@ -415,8 +416,40 @@ typedef struct s_OutputImageVmdkData {
   char *p_vmdk_lockfile_name;
 } ts_OutputImageVmdkData;
 
+//! Structure containing infos about output libs
+typedef struct s_OutputLib {
+  //! Filename of lib (without path)
+  char *p_name;
+  //! Handle to the loaded lib
+  void *p_lib;
+  //! Array of supported output formats
+  char *p_supported_output_formats;
+  //! Struct containing lib functions
+  ts_LibXmountOutput_Functions lib_functions;
+} ts_OutputLib, *pts_OutputLib;
+
 //! Structure containing infos about output image
 typedef struct s_OutputData {
+  //! Loaded output lib count
+  uint32_t libs_count;
+  //! Array containing infos about loaded output libs
+  pts_OutputLib *pp_libs;
+  //! Specified output format (--out)
+  char *p_output_format;
+  //! Amount of specified output lib params
+  uint32_t lib_params_count;
+  //! Specified output lib params (--outopts)
+  pts_LibXmountOptions *pp_lib_params;
+  //! Handle to initialized output lib
+  void *p_handle;
+  //! Transformation functions of initialized lib
+  pts_LibXmountOutput_Functions p_functions;
+  //! Input image functions passed to output lib
+  ts_LibXmountOutput_InputFunctions input_functions;
+
+
+
+
   //! Virtual image type
   te_VirtImageType VirtImageType;
   //! Size

@@ -93,6 +93,7 @@ set(CMAKE_C_FLAGS_DEBUG "-ggdb -O0 ${CMAKE_C_FLAGS}")
 # Compile stuff in sub dirs
 add_subdirectory(libxmount_input)
 add_subdirectory(libxmount_morphing)
+add_subdirectory(libxmount_output)
 add_subdirectory(src)
 
 # Install man page

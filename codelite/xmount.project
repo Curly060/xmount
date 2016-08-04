@@ -237,4 +237,13 @@
       </Completion>
     </Configuration>
   </Settings>
+  <VirtualDirectory Name="libxmount_output">
+    <File Name="../libxmount_output/CMakeLists.txt"/>
+    <File Name="../libxmount_output/libxmount_output.h"/>
+    <VirtualDirectory Name="libxmount_output_raw">
+      <File Name="../libxmount_output/libxmount_output_raw/CMakeLists.txt"/>
+      <File Name="../libxmount_output/libxmount_output_raw/libxmount_output_raw.c"/>
+      <File Name="../libxmount_output/libxmount_output_raw/libxmount_output_raw.h"/>
+    </VirtualDirectory>
+  </VirtualDirectory>
 </CodeLite_Project>

@@ -74,43 +74,64 @@ static ts_XmountData glob_xmount;
 /*******************************************************************************
  * Forward declarations
  ******************************************************************************/
-// Helper functions
+/*
+ * Misc
+ */
+static void InitResources();
+static void FreeResources();
 static void PrintUsage(char*);
 static void CheckFuseSettings();
 static int ParseCmdLine(const int, char**);
-
 static int ExtractOutputFileNames(char*);
 static int CalculateInputImageHash(uint64_t*, uint64_t*);
-
-static int GetInputImageData(pts_InputImage, char*, off_t, size_t, size_t*);
-
+/*
+ * Input
+ */
+static int ReadInputImageData(pts_InputImage, char*, off_t, size_t, size_t*);
+/*
+ * Morphing
+ */
 static int GetMorphedImageSize(uint64_t*);
 static int ReadMorphedImageData(char*, off_t, size_t, size_t*);
 static int WriteMorphedImageData(const char*, off_t, size_t, size_t*);
-
+/*
+ * Cache
+ */
+static int InitCacheFile();
+static int UpdateBlockCacheIndex(uint64_t, t_CacheFileBlockIndex);
+/*
+ * Output
+ */
 static int GetOutputImageSize(uint64_t*);
 static int ReadOutputImageData(char*, off_t, size_t);
 static int WriteOutputImageData(const char*, off_t, size_t);
-
+/*
+ * Info file
+ */
 static int InitInfoFile();
-
-static int InitCacheFile();
+/*
+ * Lib related
+ */
 static int LoadLibs();
 static int FindInputLib(pts_InputImage);
 static int FindMorphingLib();
 static int FindOutputLib();
-static void InitResources();
-static void FreeResources();
 static int SplitLibraryParameters(char*, uint32_t*, pts_LibXmountOptions**);
-// Functions exported to LibXmount_Morphing
+/*
+ * Functions exported to LibXmount_Morphing
+ */
 static int LibXmount_Morphing_ImageCount(uint64_t*);
 static int LibXmount_Morphing_Size(uint64_t, uint64_t*);
 static int LibXmount_Morphing_Read(uint64_t, char*, off_t, size_t, size_t*);
-// Functions exported to LibXmount_Output
+/*
+ * Functions exported to LibXmount_Output
+ */
 static int LibXmount_Output_Size(uint64_t*);
 static int LibXmount_Output_Read(char*, off_t, size_t, size_t*);
 static int LibXmount_Output_Write(char*, off_t, size_t, size_t*);
-// Functions implementing FUSE functions
+/*
+ * Functions implementing FUSE functions
+ */
 static int FuseGetAttr(const char*, struct stat*);
 static int FuseMkDir(const char*, mode_t);
 static int FuseMkNod(const char*, mode_t, dev_t);
@@ -891,11 +912,11 @@ static int GetOutputImageSize(uint64_t *p_size) {
  * \param p_read Number of read bytes on success
  * \return 0 on success, negated error code on error
  */
-static int GetInputImageData(pts_InputImage p_image,
-                             char *p_buf,
-                             off_t offset,
-                             size_t size,
-                             size_t *p_read)
+static int ReadInputImageData(pts_InputImage p_image,
+                              char *p_buf,
+                              off_t offset,
+                              size_t size,
+                              size_t *p_read)
 {
   int ret;
   size_t to_read=0;
@@ -959,10 +980,14 @@ static int ReadMorphedImageData(char *p_buf,
                                 size_t size,
                                 size_t *p_read)
 {
-  int ret;
-  size_t to_read=0;
-  size_t read;
+  uint64_t block_off=0;
+  uint64_t cur_block=0;
+  uint64_t cur_to_read=0;
   uint64_t image_size=0;
+  size_t read=0;
+  size_t to_read=0;
+  int ret;
+  teGidaFsError gidafs_ret=eGidaFsError_None;
 
   // Make sure we aren't reading past EOF of image file
   if(GetMorphedImageSize(&image_size)!=TRUE) {
@@ -973,29 +998,78 @@ static int ReadMorphedImageData(char *p_buf,
     // Offset is beyond image size
     LOG_DEBUG("Offset %zu is at / beyond size of morphed image.\n",offset);
     *p_read=0;
-    return 0;
+    return FALSE;
   }
   if(offset+size>image_size) {
     // Attempt to read data past EOF of morphed image file
     to_read=image_size-offset;
     LOG_DEBUG("Attempt to read data past EOF of morphed image. Corrected size "
-                "from %zu to %zu.\n",
+                "from %zu to %" PRIu64 ".\n",
               size,
               to_read);
   } else to_read=size;
 
-  // Read data from morphed image
-  ret=glob_xmount.morphing.p_functions->Read(glob_xmount.morphing.p_handle,
-                                             p_buf,
-                                             offset,
-                                             to_read,
-                                             &read);
-  if(ret!=0) {
-    LOG_ERROR("Couldn't read %zu bytes at offset %zu from morphed image: %s!\n",
-              to_read,
-              offset,
-              glob_xmount.morphing.p_functions->GetErrorMessage(ret));
-    return -EIO;
+  // Calculate block to start reading data from
+  cur_block=offset/CACHE_BLOCK_SIZE;
+  block_off=offset%CACHE_BLOCK_SIZE;
+
+  // Read image data
+  while(to_read!=0) {
+    // Calculate how many bytes we have to read from this block
+    if(block_off+to_read>CACHE_BLOCK_SIZE) {
+      cur_to_read=CACHE_BLOCK_SIZE-block_off;
+    } else cur_to_read=to_read;
+
+    // Check if block is cached
+    if(glob_xmount.output.writable==TRUE &&
+       glob_xmount.cache.p_block_cache_index[cur_block]!=CACHE_BLOCK_FREE)
+    {
+      // Write support enabled and need to read altered data from cachefile
+      LOG_DEBUG("Reading %zu bytes at offset %" PRIu64
+                  " from block cache file\n",
+                cur_to_read,
+                glob_xmount.cache.p_block_cache_index[cur_block]+block_off)
+
+      gidafs_ret=GidaFsLib_ReadFile(glob_xmount.cache.h_cache_file,
+                                    glob_xmount.cache.h_block_cache,
+                                    glob_xmount.cache.
+                                      p_block_cache_index[cur_block]+block_off,
+                                    cur_to_read,
+                                    p_buf,
+                                    &read);
+      if(gidafs_ret!=eGidaFsError_None || read!=cur_to_read) {
+        LOG_ERROR("Unable to read cached data from block %" PRIu64
+                    ": Error code %u!\n",
+                  cur_block,
+                  gidafs_ret);
+        return -EIO;
+      }
+    } else {
+      // No write support or data not cached
+      ret=glob_xmount.morphing.p_functions->Read(glob_xmount.morphing.p_handle,
+                                                 p_buf,
+                                                 (cur_block*CACHE_BLOCK_SIZE)+
+                                                   block_off,
+                                                 cur_to_read,
+                                                 &read);
+      if(ret!=0 || read!=cur_to_read) {
+        LOG_ERROR("Couldn't read %zu bytes at offset %zu from morphed image: "
+                    "%s!\n",
+                  cur_to_read,
+                  offset,
+                  glob_xmount.morphing.p_functions->GetErrorMessage(ret));
+        return -EIO;
+      }
+      LOG_DEBUG("Read %" PRIu64 " bytes at offset %" PRIu64
+                  " from morphed image file\n",
+                cur_to_read,
+                (cur_block*CACHE_BLOCK_SIZE)+block_off);
+    }
+
+    cur_block++;
+    block_off=0;
+    p_buf+=cur_to_read;
+    to_read-=cur_to_read;
   }
 
   *p_read=to_read;
@@ -1015,8 +1089,185 @@ static int WriteMorphedImageData(const char *p_buf,
                                  size_t count,
                                  size_t *p_written)
 {
-  // TODO: Implement
-  return -EIO;
+  uint64_t block_off=0;
+  uint64_t cur_block=0;
+  uint64_t cur_to_write=0;
+  uint64_t image_size=0;
+  size_t written=0;
+  size_t to_write=0;
+  int ret;
+
+  // Make sure we aren't writing past EOF of image file
+  if(GetMorphedImageSize(&image_size)!=TRUE) {
+    LOG_ERROR("Couldn't get size of morphed image!\n");
+    return -EIO;
+  }
+  if(offset>=image_size) {
+    // Offset is beyond image size
+    LOG_DEBUG("Offset %zu is at / beyond size of morphed image.\n",offset);
+    *p_written=0;
+    return 0;
+  }
+  if(offset+count>image_size) {
+    // Attempt to write data past EOF of morphed image file
+    to_write=image_size-offset;
+    LOG_DEBUG("Attempt to write data past EOF of morphed image. Corrected size "
+                "from %zu to %" PRIu64 ".\n",
+              count,
+              to_write);
+  } else to_write=count;
+
+  // Calculate block to start writing data to
+  cur_block=offset/CACHE_BLOCK_SIZE;
+  block_off=offset%CACHE_BLOCK_SIZE;
+
+  while(to_write!=0) {
+    // Calculate how many bytes we have to write to this block
+    if(block_off+to_write>CACHE_BLOCK_SIZE) {
+      cur_to_write=CACHE_BLOCK_SIZE-block_off;
+    } else cur_to_write=to_write;
+/*
+    if(glob_xmount.cache.p_cache_blkidx[cur_block].Assigned==1) {
+      // Block was already cached
+      // Seek to data offset in cache file
+      if(fseeko(glob_xmount.cache.h_old_cache_file,
+             glob_xmount.cache.p_cache_blkidx[cur_block].off_data+block_off,
+             SEEK_SET)!=0)
+      {
+        LOG_ERROR("Couldn't seek to cached block at address %" PRIu64 "\n",
+                  glob_xmount.cache.p_cache_blkidx[cur_block].off_data+
+                    block_off);
+        return -1;
+      }
+      if(fwrite(p_write_buf,cur_to_write,1,glob_xmount.cache.h_old_cache_file)!=1) {
+        LOG_ERROR("Error while writing %zu bytes "
+                  "to cache file at offset %" PRIu64 "!\n",
+                  cur_to_write,
+                  glob_xmount.cache.p_cache_blkidx[cur_block].off_data+
+                    block_off);
+        return -1;
+      }
+      LOG_DEBUG("Wrote %zd bytes at offset %" PRIu64
+                  " to cache file\n",cur_to_write,
+                glob_xmount.cache.p_cache_blkidx[cur_block].off_data+
+                  block_off);
+    } else {
+      // Uncached block. Need to cache entire new block
+      // Seek to end of cache file to append new cache block
+      fseeko(glob_xmount.cache.h_old_cache_file,0,SEEK_END);
+      glob_xmount.cache.p_cache_blkidx[cur_block].off_data=
+        ftello(glob_xmount.cache.h_old_cache_file);
+      if(block_off!=0) {
+        // Changed data does not begin at block boundry. Need to prepend
+        // with data from virtual image file
+        XMOUNT_MALLOC(p_buf2,char*,block_off*sizeof(char));
+        ret=ReadMorphedImageData(p_buf2,
+                                 file_offset-block_off,
+                                 block_off,
+                                 &read);
+        if(ret!=TRUE || read!=block_off) {
+          LOG_ERROR("Couldn't read data from morphed image!\n")
+          return -1;
+        }
+        if(fwrite(p_buf2,block_off,1,glob_xmount.cache.h_old_cache_file)!=1) {
+          LOG_ERROR("Couldn't writing %" PRIu64 " bytes "
+                    "to cache file at offset %" PRIu64 "!\n",
+                    block_off,
+                    glob_xmount.cache.p_cache_blkidx[cur_block].off_data);
+          return -1;
+        }
+        LOG_DEBUG("Prepended changed data with %" PRIu64
+                  " bytes from virtual image file at offset %" PRIu64
+                  "\n",block_off,file_offset-block_off)
+        free(p_buf2);
+      }
+      if(fwrite(p_write_buf,cur_to_write,1,glob_xmount.cache.h_old_cache_file)!=1) {
+        LOG_ERROR("Error while writing %zd bytes "
+                    "to cache file at offset %" PRIu64 "!\n",
+                  cur_to_write,
+                  glob_xmount.cache.p_cache_blkidx[cur_block].off_data+
+                    block_off);
+        return -1;
+      }
+      if(block_off+cur_to_write!=CACHE_BLOCK_SIZE) {
+        // Changed data does not end at block boundry. Need to append
+        // with data from virtual image file
+        XMOUNT_MALLOC(p_buf2,char*,(CACHE_BLOCK_SIZE-
+                                 (block_off+cur_to_write))*sizeof(char))
+        memset(p_buf2,0,CACHE_BLOCK_SIZE-(block_off+cur_to_write));
+        if((file_offset-block_off)+CACHE_BLOCK_SIZE>orig_image_size) {
+          // Original image is smaller than full cache block
+          ret=ReadMorphedImageData(p_buf2,
+                                   file_offset+cur_to_write,
+                                   orig_image_size-(file_offset+cur_to_write),
+                                   &read);
+          if(ret!=TRUE || read!=orig_image_size-(file_offset+cur_to_write)) {
+            LOG_ERROR("Couldn't read data from virtual image file!\n")
+            return -1;
+          }
+        } else {
+          ret=ReadMorphedImageData(p_buf2,
+                                   file_offset+cur_to_write,
+                                   CACHE_BLOCK_SIZE-(block_off+cur_to_write),
+                                   &read);
+          if(ret!=TRUE || read!=CACHE_BLOCK_SIZE-(block_off+cur_to_write)) {
+            LOG_ERROR("Couldn't read data from virtual image file!\n")
+            return -1;
+          }
+        }
+        if(fwrite(p_buf2,
+                  CACHE_BLOCK_SIZE-(block_off+cur_to_write),
+                  1,
+                  glob_xmount.cache.h_old_cache_file)!=1)
+        {
+          LOG_ERROR("Error while writing %zd bytes "
+                      "to cache file at offset %" PRIu64 "!\n",
+                    CACHE_BLOCK_SIZE-(block_off+cur_to_write),
+                    glob_xmount.cache.p_cache_blkidx[cur_block].off_data+
+                      block_off+cur_to_write);
+          return -1;
+        }
+        free(p_buf2);
+      }
+      // All important data for this cache block has been written,
+      // flush all buffers and mark cache block as assigned
+      fflush(glob_xmount.cache.h_old_cache_file);
+#ifndef __APPLE__
+      ioctl(fileno(glob_xmount.cache.h_old_cache_file),BLKFLSBUF,0);
+#endif
+      glob_xmount.cache.p_cache_blkidx[cur_block].Assigned=1;
+      // Update cache block index entry in cache file
+      fseeko(glob_xmount.cache.h_old_cache_file,
+             sizeof(ts_CacheFileHeader)+
+               (cur_block*sizeof(ts_CacheFileBlockIndex)),
+             SEEK_SET);
+      if(fwrite(&(glob_xmount.cache.p_cache_blkidx[cur_block]),
+                sizeof(ts_CacheFileBlockIndex),
+                1,
+                glob_xmount.cache.h_old_cache_file)!=1)
+      {
+        LOG_ERROR("Couldn't update cache file block index!\n");
+        return -1;
+      }
+      LOG_DEBUG("Updated cache file block index: Number=%" PRIu64
+                  ", Data offset=%" PRIu64 "\n",
+                cur_block,
+                glob_xmount.cache.p_cache_blkidx[cur_block].off_data);
+    }
+    // Flush buffers
+    fflush(glob_xmount.cache.h_old_cache_file);
+#ifndef __APPLE__
+    ioctl(fileno(glob_xmount.cache.h_old_cache_file),BLKFLSBUF,0);
+#endif
+*/
+    block_off=0;
+    cur_block++;
+    p_buf+=cur_to_write;
+    to_write-=cur_to_write;
+  }
+
+  *p_written=to_write;
+  return TRUE;
 }
 
 //! Read data from output image
@@ -1036,6 +1287,8 @@ static int ReadOutputImageData(char *p_buf, off_t offset, size_t size) {
     LOG_ERROR("Couldn't get size of output image!\n")
     return -EIO;
   }
+
+  // Make sure request is within output image
   if(offset>=output_image_size) {
     LOG_DEBUG("Offset %zu is at / beyond size of output image.\n",offset);
     return 0;
@@ -1048,6 +1301,7 @@ static int ReadOutputImageData(char *p_buf, off_t offset, size_t size) {
     size=output_image_size-offset;
   }
 
+  // Read data
   ret=glob_xmount.output.p_functions->Read(glob_xmount.output.p_handle,
                                            p_buf,
                                            offset,
@@ -1060,190 +1314,10 @@ static int ReadOutputImageData(char *p_buf, off_t offset, size_t size) {
     return ret;
   } else if(read!=size) {
     LOG_WARNING("Unable to read all requested data from output image!\n")
+    return read;
   }
 
   return size;
-
-  // TODO: Move part of this code to ReadMorphedImageData !!!
-/*
-  // Get morphed image size
-  if(GetMorphedImageSize(&morphed_image_size)!=TRUE) {
-    LOG_ERROR("Couldn't get morphed image size!")
-    return -EIO;
-  }
-
-  // Read virtual image type specific data preceeding morphed image data
-  switch(glob_xmount.output.VirtImageType) {
-    case VirtImageType_DD:
-    case VirtImageType_DMG:
-    case VirtImageType_VMDK:
-    case VirtImageType_VMDKS:
-      break;
-    case VirtImageType_VDI:
-      if(file_off<glob_xmount.output.vdi.vdi_header_size) {
-        if(file_off+to_read>glob_xmount.output.vdi.vdi_header_size) {
-          cur_to_read=glob_xmount.output.vdi.vdi_header_size-file_off;
-        } else {
-          cur_to_read=to_read;
-        }
-        if(glob_xmount.output.writable==TRUE &&
-           glob_xmount.cache.p_cache_header->VdiFileHeaderCached==TRUE)
-        {
-          // VDI header was already cached
-          if(fseeko(glob_xmount.cache.h_old_cache_file,
-                    glob_xmount.cache.p_cache_header->pVdiFileHeader+file_off,
-                    SEEK_SET)!=0)
-          {
-            LOG_ERROR("Couldn't seek to cached VDI header at offset %"
-                        PRIu64 "\n",
-                      glob_xmount.cache.p_cache_header->pVdiFileHeader+file_off)
-            return -EIO;
-          }
-          if(fread(p_buf,cur_to_read,1,glob_xmount.cache.h_old_cache_file)!=1) {
-            LOG_ERROR("Couldn't read %zu bytes from cache file at offset %"
-                        PRIu64 "\n",
-                      cur_to_read,
-                      glob_xmount.cache.p_cache_header->pVdiFileHeader+file_off)
-            return -EIO;
-          }
-          LOG_DEBUG("Read %zd bytes from cached VDI header at offset %"
-                      PRIu64 " at cache file offset %" PRIu64 "\n",
-                    cur_to_read,
-                    file_off,
-                    glob_xmount.cache.p_cache_header->pVdiFileHeader+file_off)
-        } else {
-          // VDI header isn't cached
-          memcpy(p_buf,
-                 ((char*)glob_xmount.output.vdi.p_vdi_header)+file_off,
-                 cur_to_read);
-          LOG_DEBUG("Read %zd bytes at offset %" PRIu64
-                    " from virtual VDI header\n",cur_to_read,
-                    file_off)
-        }
-        if(to_read==cur_to_read) return to_read;
-        else {
-          // Adjust values to read from morphed image
-          to_read-=cur_to_read;
-          p_buf+=cur_to_read;
-          file_off=0;
-        }
-      } else file_off-=glob_xmount.output.vdi.vdi_header_size;
-      break;
-    case VirtImageType_VHD:
-      // When emulating VHD, make sure the while loop below only reads data
-      // available in the morphed image. Any VHD footer data must be read
-      // afterwards.
-      if(file_off>=morphed_image_size) {
-        to_read_later=to_read;
-        to_read=0;
-      } else if((file_off+to_read)>morphed_image_size) {
-        to_read_later=(file_off+to_read)-morphed_image_size;
-        to_read-=to_read_later;
-      }
-      break;
-  }
-
-  // Calculate block to read data from
-  cur_block=file_off/CACHE_BLOCK_SIZE;
-  block_off=file_off%CACHE_BLOCK_SIZE;
-
-  // Read image data
-  while(to_read!=0) {
-    // Calculate how many bytes we have to read from this block
-    if(block_off+to_read>CACHE_BLOCK_SIZE) {
-      cur_to_read=CACHE_BLOCK_SIZE-block_off;
-    } else cur_to_read=to_read;
-    if(glob_xmount.output.writable==TRUE &&
-       glob_xmount.cache.p_cache_blkidx[cur_block].Assigned==TRUE)
-    {
-      // Write support enabled and need to read altered data from cachefile
-      if(fseeko(glob_xmount.cache.h_old_cache_file,
-                glob_xmount.cache.p_cache_blkidx[cur_block].off_data+block_off,
-                SEEK_SET)!=0)
-      {
-        LOG_ERROR("Couldn't seek to offset %" PRIu64
-                  " in cache file\n")
-        return -EIO;
-      }
-      if(fread(p_buf,cur_to_read,1,glob_xmount.cache.h_old_cache_file)!=1) {
-        LOG_ERROR("Couldn't read data from cache file!\n")
-        return -EIO;
-      }
-      LOG_DEBUG("Read %zd bytes at offset %" PRIu64
-                " from cache file\n",cur_to_read,file_off)
-    } else {
-      // No write support or data not cached
-      ret=ReadMorphedImageData(p_buf,file_off,cur_to_read,&read);
-      if(ret!=TRUE || read!=cur_to_read) {
-        LOG_ERROR("Couldn't read data from virtual image!\n")
-        return -EIO;
-      }
-      LOG_DEBUG("Read %zu bytes at offset %zu from virtual image file\n",
-                cur_to_read,
-                file_off);
-    }
-    cur_block++;
-    block_off=0;
-    p_buf+=cur_to_read;
-    to_read-=cur_to_read;
-    file_off+=cur_to_read;
-  }
-
-  if(to_read_later!=0) {
-    // Read virtual image type specific data following morphed image data
-    switch(glob_xmount.output.VirtImageType) {
-      case VirtImageType_DD:
-      case VirtImageType_DMG:
-      case VirtImageType_VMDK:
-      case VirtImageType_VMDKS:
-      case VirtImageType_VDI:
-        break;
-      case VirtImageType_VHD:
-        // Micro$oft has choosen to use a footer rather then a header.
-        if(glob_xmount.output.writable==TRUE &&
-           glob_xmount.cache.p_cache_header->VhdFileHeaderCached==TRUE)
-        {
-          // VHD footer was already cached
-          if(fseeko(glob_xmount.cache.h_old_cache_file,
-                    glob_xmount.cache.p_cache_header->pVhdFileHeader+
-                      (file_off-morphed_image_size),
-                    SEEK_SET)!=0)
-          {
-            LOG_ERROR("Couldn't seek to cached VHD footer at offset %"
-                        PRIu64 "\n",
-                      glob_xmount.cache.p_cache_header->pVhdFileHeader+
-                        (file_off-morphed_image_size))
-            return -EIO;
-          }
-          if(fread(p_buf,to_read_later,1,glob_xmount.cache.h_old_cache_file)!=1) {
-            LOG_ERROR("Couldn't read %zu bytes from cache file at offset %"
-                        PRIu64 "\n",
-                      to_read_later,
-                      glob_xmount.cache.p_cache_header->pVhdFileHeader+
-                        (file_off-morphed_image_size))
-            return -EIO;
-          }
-          LOG_DEBUG("Read %zd bytes from cached VHD footer at offset %"
-                      PRIu64 " at cache file offset %" PRIu64 "\n",
-                    to_read_later,
-                    (file_off-morphed_image_size),
-                    glob_xmount.cache.p_cache_header->pVhdFileHeader+
-                      (file_off-morphed_image_size))
-        } else {
-          // VHD header isn't cached
-          memcpy(p_buf,
-                 ((char*)glob_xmount.output.vhd.p_vhd_header)+
-                   (file_off-morphed_image_size),
-                 to_read_later);
-          LOG_DEBUG("Read %zd bytes at offset %" PRIu64
-                      " from virtual VHD header\n",
-                    to_read_later,
-                    (file_off-morphed_image_size))
-        }
-        break;
-    }
-  }
-*/
 }
 
 //! Write data to output image
@@ -1612,11 +1686,9 @@ static int InitInfoFile() {
 static int InitCacheFile() {
   uint64_t blockindex_size=0;
   uint64_t image_size=0;
-  uint64_t written=0;
-  uint32_t needed_blocks=0;
+  uint64_t read=0;
   uint8_t is_new_cache_file=0;
   teGidaFsError gidafs_ret=eGidaFsError_None;
-  t_CacheFileBlockIndex *p_index_buf=NULL;
 
   // Get input image size for later use
   if(!GetMorphedImageSize(&image_size)) {
@@ -1695,6 +1767,8 @@ static int InitCacheFile() {
   }                                                                         \
 } while(0)
 
+  // TODO: Check if cache file uses same block size as we do
+
   if(is_new_cache_file==1) {
     // New cache file, create needed xmount subdirectory
     gidafs_ret=GidaFsLib_CreateDir(glob_xmount.cache.h_cache_file,
@@ -1726,7 +1800,7 @@ static int InitCacheFile() {
     return FALSE;
   }
 
-  // Create block cache index file
+  // Open / Create block cache index file
   gidafs_ret=GidaFsLib_OpenFile(glob_xmount.cache.h_cache_file,
                                 XMOUNT_CACHE_BLOCK_INDEX_FILE,
                                 &(glob_xmount.cache.h_block_cache_index),
@@ -1747,29 +1821,32 @@ static int InitCacheFile() {
 
   // Calculate how many cache blocks are needed and how big the cache block
   // index must be
-  needed_blocks=image_size/CACHE_BLOCK_SIZE;
-  if((image_size%CACHE_BLOCK_SIZE)!=0) needed_blocks++;
+  glob_xmount.cache.block_cache_index_len=image_size/CACHE_BLOCK_SIZE;
+  if((image_size%CACHE_BLOCK_SIZE)!=0) {
+    glob_xmount.cache.block_cache_index_len++;
+  }
 
   LOG_DEBUG("Cache blocks: %u (0x%04X) entries using %zd (0x%08zX) bytes\n",
-            needed_blocks,
-            needed_blocks,
-            needed_blocks*sizeof(t_CacheFileBlockIndex),
-            needed_blocks*sizeof(t_CacheFileBlockIndex))
+            glob_xmount.cache.block_cache_index_len,
+            glob_xmount.cache.block_cache_index_len,
+            glob_xmount.cache.block_cache_index_len*
+              sizeof(t_CacheFileBlockIndex),
+            glob_xmount.cache.block_cache_index_len*
+              sizeof(t_CacheFileBlockIndex))
+
+  // Prepare in-memory buffer for block cache index
+  XMOUNT_MALLOC(glob_xmount.cache.p_block_cache_index,
+                t_CacheFileBlockIndex*,
+                glob_xmount.cache.block_cache_index_len*
+                  sizeof(t_CacheFileBlockIndex))
 
   if(is_new_cache_file==1) {
     // Generate initial block cache index
-    blockindex_size=needed_blocks*sizeof(t_CacheFileBlockIndex);
-    XMOUNT_MALLOC(p_index_buf,t_CacheFileBlockIndex*,blockindex_size)
-    for(uint64_t i=0;i<needed_blocks;i++) {
-      *(p_index_buf+i)=CACHE_BLOCK_FREE;
+    for(uint64_t i=0;i<glob_xmount.cache.block_cache_index_len;i++) {
+      glob_xmount.cache.p_block_cache_index[i]=CACHE_BLOCK_FREE;
     }
-    gidafs_ret=GidaFsLib_WriteFile(glob_xmount.cache.h_cache_file,
-                                   glob_xmount.cache.h_block_cache_index,
-                                   0,
-                                   blockindex_size,
-                                   p_index_buf,
-                                   &written);
-    if(gidafs_ret!=eGidaFsError_None || written!=blockindex_size) {
+    // Write initial block cache index to cache file
+    if(UpdateBlockCacheIndex(XMOUNT_BLOCK_CACHE_INVALID_INDEX,0)!=TRUE) {
       LOG_ERROR("Unable to generate initial block cache index file '%s': "
                   "Error code %u!\n",
                 XMOUNT_CACHE_BLOCK_FILE,
@@ -1777,10 +1854,9 @@ static int InitCacheFile() {
       INITCACHEFILE__CLOSE_BLOCK_CACHE_INDEX;
       INITCACHEFILE__CLOSE_BLOCK_CACHE;
       INITCACHEFILE__CLOSE_CACHE;
-      free(p_index_buf);
+      XMOUNT_FREE(glob_xmount.cache.p_block_cache_index);
       return FALSE;
     }
-    free(p_index_buf);
   } else {
     // Existing cache file, make sure block cache index has correct size
     gidafs_ret=GidaFsLib_GetFileSize(glob_xmount.cache.h_cache_file,
@@ -1792,23 +1868,81 @@ static int InitCacheFile() {
       INITCACHEFILE__CLOSE_BLOCK_CACHE_INDEX;
       INITCACHEFILE__CLOSE_BLOCK_CACHE;
       INITCACHEFILE__CLOSE_CACHE;
+      XMOUNT_FREE(glob_xmount.cache.p_block_cache_index);
       return FALSE;
     }
-    if(blockindex_size!=(needed_blocks*sizeof(t_CacheFileBlockIndex))) {
+    if(blockindex_size%sizeof(t_CacheFileBlockIndex)!=0 ||
+       (blockindex_size/sizeof(t_CacheFileBlockIndex))!=
+         glob_xmount.cache.block_cache_index_len)
+    {
       // TODO: Be more helpfull in error message
       LOG_ERROR("Block cache index size is incorrect for given input image!\n")
       INITCACHEFILE__CLOSE_BLOCK_CACHE_INDEX;
       INITCACHEFILE__CLOSE_BLOCK_CACHE;
       INITCACHEFILE__CLOSE_CACHE;
+      XMOUNT_FREE(glob_xmount.cache.p_block_cache_index);
+      return FALSE;
+    }
+    // Read block cache index into memory
+    gidafs_ret=GidaFsLib_ReadFile(glob_xmount.cache.h_cache_file,
+                                  glob_xmount.cache.h_block_cache_index,
+                                  0,
+                                  blockindex_size,
+                                  glob_xmount.cache.p_block_cache_index,
+                                  &read);
+    if(gidafs_ret!=eGidaFsError_None || read!=blockindex_size) {
+      LOG_ERROR("Unable to read block cache index: Error code %u!\n",
+                gidafs_ret);
+      INITCACHEFILE__CLOSE_BLOCK_CACHE_INDEX;
+      INITCACHEFILE__CLOSE_BLOCK_CACHE;
+      INITCACHEFILE__CLOSE_CACHE;
+      XMOUNT_FREE(glob_xmount.cache.p_block_cache_index);
       return FALSE;
     }
   }
 
-  // TODO: Check if cache file has same block size as we do
-
 #undef INITCACHEFILE__CLOSE_BLOCK_CACHE_INDEX
 #undef INITCACHEFILE__CLOSE_BLOCK_CACHE
 #undef INITCACHEFILE__CLOSE_CACHE
+
+  return TRUE;
+}
+
+//! Update block cache index
+/*!
+ * \return TRUE on success, FALSE on error
+ */
+static int UpdateBlockCacheIndex(uint64_t index, t_CacheFileBlockIndex value) {
+  uint64_t update_size=0;
+  uint64_t written=0;
+  teGidaFsError gidafs_ret=eGidaFsError_None;
+  t_CacheFileBlockIndex *p_buf;
+
+  if(index!=XMOUNT_BLOCK_CACHE_INVALID_INDEX) {
+    // Update specific index element in cache file
+    p_buf=glob_xmount.cache.p_block_cache_index+index;
+    update_size=sizeof(t_CacheFileBlockIndex);
+  } else {
+    // Dump whole block cache index to cache file
+    p_buf=glob_xmount.cache.p_block_cache_index;
+    update_size=glob_xmount.cache.block_cache_index_len*
+                  sizeof(t_CacheFileBlockIndex);
+  }
+
+  // Update cache file
+  gidafs_ret=GidaFsLib_WriteFile(glob_xmount.cache.h_cache_file,
+                                 glob_xmount.cache.h_block_cache_index,
+                                 0,
+                                 update_size,
+                                 p_buf,
+                                 &written);
+  if(gidafs_ret!=eGidaFsError_None || written!=update_size) {
+    LOG_ERROR("Unable to update block cache index file '%s': "
+                "Error code %u!\n",
+              XMOUNT_CACHE_BLOCK_INDEX_FILE,
+              gidafs_ret)
+    return FALSE;
+  }
 
   return TRUE;
 }
@@ -2288,6 +2422,8 @@ static void InitResources() {
   glob_xmount.cache.h_cache_file=NULL;
   glob_xmount.cache.h_block_cache=NULL;
   glob_xmount.cache.h_block_cache_index=NULL;
+  glob_xmount.cache.p_block_cache_index=NULL;
+  glob_xmount.cache.block_cache_index_len=0;
 
   // Output
   glob_xmount.output.libs_count=0;
@@ -2372,6 +2508,8 @@ static void FreeResources() {
 
   // Cache
   if(glob_xmount.cache.h_cache_file!=NULL) {
+    if(glob_xmount.cache.p_block_cache_index!=NULL)
+      free(glob_xmount.cache.p_block_cache_index);
     if(glob_xmount.cache.h_block_cache_index!=NULL) {
       gidafs_ret=GidaFsLib_CloseFile(glob_xmount.cache.h_cache_file,
                                      &(glob_xmount.cache.h_block_cache_index));
@@ -2623,11 +2761,11 @@ static int LibXmount_Morphing_Read(uint64_t image,
                                    size_t *p_read)
 {
   if(image>=glob_xmount.input.images_count) return -EIO;
-  return GetInputImageData(glob_xmount.input.pp_images[image],
-                           p_buf,
-                           offset,
-                           count,
-                           p_read);
+  return ReadInputImageData(glob_xmount.input.pp_images[image],
+                            p_buf,
+                            offset,
+                            count,
+                            p_read);
 }
 
 /*******************************************************************************
@@ -2639,8 +2777,11 @@ static int LibXmount_Morphing_Read(uint64_t image,
  * \return 0 on success
  */
 static int LibXmount_Output_Size(uint64_t *p_size) {
-  return glob_xmount.output.p_functions->Size(glob_xmount.output.p_handle,
-                                              p_size);
+  int ret=0;
+
+  ret=GetMorphedImageSize(p_size);
+
+  return ret==TRUE ? 0 : ret;
 }
 
 //! Function to read data from the morphed image
@@ -2656,11 +2797,7 @@ static int LibXmount_Output_Read(char *p_buf,
                                  size_t count,
                                  size_t *p_read)
 {
-  return glob_xmount.morphing.p_functions->Read(glob_xmount.output.p_handle,
-                                                p_buf,
-                                                offset,
-                                                count,
-                                                p_read);
+  return ReadMorphedImageData(p_buf,offset,count,p_read);
 }
 
 //! Function to write data to the morphed image
@@ -2676,8 +2813,7 @@ static int LibXmount_Output_Write(char *p_buf,
                                   size_t count,
                                   size_t *p_written)
 {
-  // TODO: Implement !!!
-  return -EIO;
+  return WriteMorphedImageData(p_buf,offset,count,p_read);
 }
 
 /*******************************************************************************

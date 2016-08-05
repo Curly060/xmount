@@ -26,7 +26,7 @@
 #endif
 
 /*
- * Macros to alloc or realloc memory and check whether it worked or not
+ * Macros to alloc, realloc or free memory and check whether it worked or not
  */
 #define XMOUNT_MALLOC(var,var_type,size) { \
   (var)=(var_type)malloc(size); \
@@ -42,6 +42,10 @@
     exit(1); \
   } \
 }
+#define XMOUNT_FREE(var) { \
+  free(var);               \
+  (var)=NULL;              \
+} while(0)
 
 /*
  * Macros for some often used string functions

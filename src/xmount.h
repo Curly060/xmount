@@ -46,6 +46,11 @@
 #else
   #define CACHE_BLOCK_FREE 0xFFFFFFFFFFFFFFFFLL
 #endif
+#ifdef __LP64__
+  #define XMOUNT_BLOCK_CACHE_INVALID_INDEX 0xFFFFFFFFFFFFFFFF
+#else
+  #define XMOUNT_BLOCK_CACHE_INVALID_INDEX 0xFFFFFFFFFFFFFFFFLL
+#endif
 //! Cache file block index array element
 typedef uint64_t t_CacheFileBlockIndex;
 // TODO: Remove
@@ -209,6 +214,10 @@ typedef struct s_CacheData {
   hGidaFsFile h_block_cache;
   //! Handle to block cache index
   hGidaFsFile h_block_cache_index;
+  //! In-memory copy of cache index
+  t_CacheFileBlockIndex *p_block_cache_index;
+  //! Length (in elements) of in-memory block cache index
+  uint64_t block_cache_index_len;
   // TODO: Move to s_XmountData
   //! Overwrite existing cache
   uint8_t overwrite_cache;

@@ -42,12 +42,8 @@
 #include <pthread.h>
 #include <time.h> // For time
 
-#define FUSE_USE_VERSION 26
-#include <fuse.h>
-
-#include <gidafs.h>
-
 #include "xmount.h"
+#include "xmount_fuse.h"
 #include "md5.h"
 #include "macros.h"
 #include "../libxmount/libxmount.h"
@@ -65,11 +61,6 @@
   LIBXMOUNT_LOG_DEBUG(glob_xmount.debug,__VA_ARGS__); \
 }
 
-/*******************************************************************************
- * Global vars
- ******************************************************************************/
-//! Struct that contains various runtime configuration options
-static ts_XmountData glob_xmount;
 
 /*******************************************************************************
  * Forward declarations
@@ -99,12 +90,7 @@ static int WriteMorphedImageData(const char*, off_t, size_t, size_t*);
  */
 static int InitCacheFile();
 static int UpdateBlockCacheIndex(uint64_t, t_CacheFileBlockIndex);
-/*
- * Output
- */
-static int GetOutputImageSize(uint64_t*);
-static int ReadOutputImageData(char*, off_t, size_t);
-static int WriteOutputImageData(const char*, off_t, size_t);
+
 /*
  * Info file
  */
@@ -129,28 +115,6 @@ static int LibXmount_Morphing_Read(uint64_t, char*, off_t, size_t, size_t*);
 static int LibXmount_Output_Size(uint64_t*);
 static int LibXmount_Output_Read(char*, off_t, size_t, size_t*);
 static int LibXmount_Output_Write(char*, off_t, size_t, size_t*);
-/*
- * Functions implementing FUSE functions
- */
-static int FuseGetAttr(const char*, struct stat*);
-static int FuseMkDir(const char*, mode_t);
-static int FuseMkNod(const char*, mode_t, dev_t);
-static int FuseReadDir(const char*,
-                       void*,
-                       fuse_fill_dir_t,
-                       off_t,
-                       struct fuse_file_info*);
-static int FuseOpen(const char*, struct fuse_file_info*);
-static int FuseRead(const char*, char*, size_t, off_t, struct fuse_file_info*);
-static int FuseRename(const char*, const char*);
-static int FuseRmDir(const char*);
-static int FuseUnlink(const char*);
-//static int FuseStatFs(const char*, struct statvfs*);
-static int FuseWrite(const char *p_path,
-                     const char*,
-                     size_t,
-                     off_t,
-                     struct fuse_file_info*);
 
 /*******************************************************************************
  * Helper functions
@@ -882,7 +846,7 @@ static int GetMorphedImageSize(uint64_t *p_size) {
  * \param p_size Pointer to an uint64_t to which the size will be written to
  * \return TRUE on success, FALSE on error
  */
-static int GetOutputImageSize(uint64_t *p_size) {
+int GetOutputImageSize(uint64_t *p_size) {
   int ret;
   uint64_t output_image_size=0;
 
@@ -1091,11 +1055,14 @@ static int WriteMorphedImageData(const char *p_buf,
 {
   uint64_t block_off=0;
   uint64_t cur_block=0;
+  uint64_t cur_to_read=0;
   uint64_t cur_to_write=0;
   uint64_t image_size=0;
   size_t written=0;
   size_t to_write=0;
   int ret;
+  teGidaFsError gidafs_ret=eGidaFsError_None;
+  char *p_buf2=NULL;
 
   // Make sure we aren't writing past EOF of image file
   if(GetMorphedImageSize(&image_size)!=TRUE) {
@@ -1126,140 +1093,106 @@ static int WriteMorphedImageData(const char *p_buf,
     if(block_off+to_write>CACHE_BLOCK_SIZE) {
       cur_to_write=CACHE_BLOCK_SIZE-block_off;
     } else cur_to_write=to_write;
-/*
-    if(glob_xmount.cache.p_cache_blkidx[cur_block].Assigned==1) {
-      // Block was already cached
-      // Seek to data offset in cache file
-      if(fseeko(glob_xmount.cache.h_old_cache_file,
-             glob_xmount.cache.p_cache_blkidx[cur_block].off_data+block_off,
-             SEEK_SET)!=0)
-      {
-        LOG_ERROR("Couldn't seek to cached block at address %" PRIu64 "\n",
-                  glob_xmount.cache.p_cache_blkidx[cur_block].off_data+
-                    block_off);
-        return -1;
+
+    // Check if block is cached
+    if(glob_xmount.cache.p_block_cache_index[cur_block]!=CACHE_BLOCK_FREE) {
+      // Block is cached
+      gidafs_ret=GidaFsLib_WriteFile(glob_xmount.cache.h_cache_file,
+                                     glob_xmount.cache.h_block_cache,
+                                     glob_xmount.cache.
+                                       p_block_cache_index[cur_block]+block_off,
+                                     cur_to_write,
+                                     p_buf,
+                                     &written);
+      if(gidafs_ret!=eGidaFsError_None || written!=cur_to_write) {
+        LOG_ERROR("Unable to write data to cached block %" PRIu64
+                    ": Error code %u!\n",
+                  cur_block,
+                  gidafs_ret);
+        return -EIO;
       }
-      if(fwrite(p_write_buf,cur_to_write,1,glob_xmount.cache.h_old_cache_file)!=1) {
-        LOG_ERROR("Error while writing %zu bytes "
-                  "to cache file at offset %" PRIu64 "!\n",
-                  cur_to_write,
-                  glob_xmount.cache.p_cache_blkidx[cur_block].off_data+
-                    block_off);
-        return -1;
-      }
-      LOG_DEBUG("Wrote %zd bytes at offset %" PRIu64
-                  " to cache file\n",cur_to_write,
-                glob_xmount.cache.p_cache_blkidx[cur_block].off_data+
-                  block_off);
+
+      LOG_DEBUG("Wrote %" PRIu64 " bytes at offset %" PRIu64
+                  " to block cache file\n",
+                cur_to_write,
+                glob_xmount.cache.p_block_cache_index[cur_block]+block_off);
     } else {
       // Uncached block. Need to cache entire new block
-      // Seek to end of cache file to append new cache block
-      fseeko(glob_xmount.cache.h_old_cache_file,0,SEEK_END);
-      glob_xmount.cache.p_cache_blkidx[cur_block].off_data=
-        ftello(glob_xmount.cache.h_old_cache_file);
-      if(block_off!=0) {
-        // Changed data does not begin at block boundry. Need to prepend
-        // with data from virtual image file
-        XMOUNT_MALLOC(p_buf2,char*,block_off*sizeof(char));
-        ret=ReadMorphedImageData(p_buf2,
-                                 file_offset-block_off,
-                                 block_off,
-                                 &read);
-        if(ret!=TRUE || read!=block_off) {
-          LOG_ERROR("Couldn't read data from morphed image!\n")
-          return -1;
-        }
-        if(fwrite(p_buf2,block_off,1,glob_xmount.cache.h_old_cache_file)!=1) {
-          LOG_ERROR("Couldn't writing %" PRIu64 " bytes "
-                    "to cache file at offset %" PRIu64 "!\n",
-                    block_off,
-                    glob_xmount.cache.p_cache_blkidx[cur_block].off_data);
-          return -1;
-        }
-        LOG_DEBUG("Prepended changed data with %" PRIu64
-                  " bytes from virtual image file at offset %" PRIu64
-                  "\n",block_off,file_offset-block_off)
-        free(p_buf2);
+      // Prepare new write buffer
+      XMOUNT_MALLOC(p_buf2,char*,CACHE_BLOCK_SIZE);
+      memset(p_buf2,0x00,CACHE_BLOCK_SIZE);
+
+      // Read full block from morphed image
+      cur_to_read=CACHE_BLOCK_SIZE;
+      if((cur_block*CACHE_BLOCK_SIZE)+CACHE_BLOCK_SIZE>image_size) {
+        cur_to_read=CACHE_BLOCK_SIZE-(((cur_block*CACHE_BLOCK_SIZE)+
+                                         CACHE_BLOCK_SIZE)-image_size);
       }
-      if(fwrite(p_write_buf,cur_to_write,1,glob_xmount.cache.h_old_cache_file)!=1) {
-        LOG_ERROR("Error while writing %zd bytes "
-                    "to cache file at offset %" PRIu64 "!\n",
-                  cur_to_write,
-                  glob_xmount.cache.p_cache_blkidx[cur_block].off_data+
-                    block_off);
-        return -1;
+      ret=glob_xmount.morphing.p_functions->Read(glob_xmount.morphing.p_handle,
+                                                 p_buf2,
+                                                 cur_block*CACHE_BLOCK_SIZE,
+                                                 cur_to_read,
+                                                 &read);
+      if(ret!=0 || read!=cur_to_read) {
+        LOG_ERROR("Couldn't read %" PRIu64 " bytes at offset %zu "
+                    "from morphed image: %s!\n",
+                  cur_to_read,
+                  offset,
+                  glob_xmount.morphing.p_functions->GetErrorMessage(ret));
+        XMOUNT_FREE(p_buf2);
+        return -EIO;
       }
-      if(block_off+cur_to_write!=CACHE_BLOCK_SIZE) {
-        // Changed data does not end at block boundry. Need to append
-        // with data from virtual image file
-        XMOUNT_MALLOC(p_buf2,char*,(CACHE_BLOCK_SIZE-
-                                 (block_off+cur_to_write))*sizeof(char))
-        memset(p_buf2,0,CACHE_BLOCK_SIZE-(block_off+cur_to_write));
-        if((file_offset-block_off)+CACHE_BLOCK_SIZE>orig_image_size) {
-          // Original image is smaller than full cache block
-          ret=ReadMorphedImageData(p_buf2,
-                                   file_offset+cur_to_write,
-                                   orig_image_size-(file_offset+cur_to_write),
-                                   &read);
-          if(ret!=TRUE || read!=orig_image_size-(file_offset+cur_to_write)) {
-            LOG_ERROR("Couldn't read data from virtual image file!\n")
-            return -1;
-          }
-        } else {
-          ret=ReadMorphedImageData(p_buf2,
-                                   file_offset+cur_to_write,
-                                   CACHE_BLOCK_SIZE-(block_off+cur_to_write),
-                                   &read);
-          if(ret!=TRUE || read!=CACHE_BLOCK_SIZE-(block_off+cur_to_write)) {
-            LOG_ERROR("Couldn't read data from virtual image file!\n")
-            return -1;
-          }
-        }
-        if(fwrite(p_buf2,
-                  CACHE_BLOCK_SIZE-(block_off+cur_to_write),
-                  1,
-                  glob_xmount.cache.h_old_cache_file)!=1)
-        {
-          LOG_ERROR("Error while writing %zd bytes "
-                      "to cache file at offset %" PRIu64 "!\n",
-                    CACHE_BLOCK_SIZE-(block_off+cur_to_write),
-                    glob_xmount.cache.p_cache_blkidx[cur_block].off_data+
-                      block_off+cur_to_write);
-          return -1;
-        }
-        free(p_buf2);
+
+      // Set changed data
+      memcpy(p_buf2+block_off,p_buf,cur_to_write);
+
+      // Write new block to block cache
+      // Get current block cache size
+      gidafs_ret=GidaFsLib_GetFileSize(glob_xmount.cache.h_cache_file,
+                                       glob_xmount.cache.h_block_cache,
+                                       &(glob_xmount.cache.
+                                         p_block_cache_index[cur_block]));
+      if(gidafs_ret!=eGidaFsError_None) {
+        LOG_ERROR("Unable to get current block cache size: Error code %u!\n",
+                  gidafs_ret);
+        XMOUNT_FREE(p_buf2);
+        return -EIO;
       }
-      // All important data for this cache block has been written,
-      // flush all buffers and mark cache block as assigned
-      fflush(glob_xmount.cache.h_old_cache_file);
-#ifndef __APPLE__
-      ioctl(fileno(glob_xmount.cache.h_old_cache_file),BLKFLSBUF,0);
-#endif
-      glob_xmount.cache.p_cache_blkidx[cur_block].Assigned=1;
-      // Update cache block index entry in cache file
-      fseeko(glob_xmount.cache.h_old_cache_file,
-             sizeof(ts_CacheFileHeader)+
-               (cur_block*sizeof(ts_CacheFileBlockIndex)),
-             SEEK_SET);
-      if(fwrite(&(glob_xmount.cache.p_cache_blkidx[cur_block]),
-                sizeof(ts_CacheFileBlockIndex),
-                1,
-                glob_xmount.cache.h_old_cache_file)!=1)
-      {
-        LOG_ERROR("Couldn't update cache file block index!\n");
-        return -1;
+      // Append new block
+      gidafs_ret=GidaFsLib_WriteFile(glob_xmount.cache.h_cache_file,
+                                     glob_xmount.cache.h_block_cache,
+                                     glob_xmount.cache.
+                                       p_block_cache_index[cur_block],
+                                     CACHE_BLOCK_SIZE,
+                                     p_buf2,
+                                     &written);
+      if(gidafs_ret!=eGidaFsError_None || written!=cur_to_write) {
+        LOG_ERROR("Unable to write data to cached block %" PRIu64
+                    ": Error code %u!\n",
+                  cur_block,
+                  gidafs_ret);
+        XMOUNT_FREE(p_buf2);
+        return -EIO;
       }
+      XMOUNT_FREE(p_buf2);
+      // Update on-disk block cache index
+      ret=UpdateBlockCacheIndex(cur_block,
+                                glob_xmount.cache.p_block_cache_index[
+                                  cur_block]);
+      if(ret!=TRUE) {
+        LOG_ERROR("Unable to update block cache index %" PRIu64
+                    ": Error code %u!\n",
+                  cur_block,
+                  gidafs_ret);
+        return -EIO;
+      }
+
       LOG_DEBUG("Updated cache file block index: Number=%" PRIu64
                   ", Data offset=%" PRIu64 "\n",
                 cur_block,
-                glob_xmount.cache.p_cache_blkidx[cur_block].off_data);
+                glob_xmount.cache.p_block_cache_index[cur_block]);
     }
-    // Flush buffers
-    fflush(glob_xmount.cache.h_old_cache_file);
-#ifndef __APPLE__
-    ioctl(fileno(glob_xmount.cache.h_old_cache_file),BLKFLSBUF,0);
-#endif
-*/
+
     block_off=0;
     cur_block++;
     p_buf+=cur_to_write;
@@ -1277,7 +1210,7 @@ static int WriteMorphedImageData(const char *p_buf,
  * \param size Size of data which should be read
  * \return Number of read bytes on success or negated error code on error
  */
-static int ReadOutputImageData(char *p_buf, off_t offset, size_t size) {
+int ReadOutputImageData(char *p_buf, off_t offset, size_t size) {
   uint64_t output_image_size;
   size_t read=0;
   int ret;
@@ -1327,7 +1260,7 @@ static int ReadOutputImageData(char *p_buf, off_t offset, size_t size) {
  * \param size Amount of bytes to write
  * \return Number of written bytes on success or "-1" on error
  */
-static int WriteOutputImageData(const char *p_buf, off_t offset, size_t size) {
+int WriteOutputImageData(const char *p_buf, off_t offset, size_t size) {
   uint64_t output_image_size;
   int ret;
   size_t written;
@@ -1366,221 +1299,6 @@ static int WriteOutputImageData(const char *p_buf, off_t offset, size_t size) {
   }
 
   return size;
-
-  // TODO: Move part of this code to WriteMorphedImageData() !!
-/*
-  // Get original image size
-  if(!GetMorphedImageSize(&orig_image_size)) {
-    LOG_ERROR("Couldn't get morphed image size!\n")
-    return -1;
-  }
-
-  // Cache virtual image type specific data preceeding original image data
-  switch(glob_xmount.output.VirtImageType) {
-    case VirtImageType_DD:
-    case VirtImageType_DMG:
-    case VirtImageType_VMDK:
-    case VirtImageType_VMDKS:
-      break;
-    case VirtImageType_VDI:
-      if(file_offset<glob_xmount.output.vdi.vdi_header_size) {
-        ret=SetVdiFileHeaderData(p_write_buf,file_offset,to_write);
-        if(ret==-1) {
-          LOG_ERROR("Couldn't write data to virtual VDI file header!\n")
-          return -1;
-        }
-        if(ret==to_write) return to_write;
-        else {
-          to_write-=ret;
-          p_write_buf+=ret;
-          file_offset=0;
-        }
-      } else file_offset-=glob_xmount.output.vdi.vdi_header_size;
-      break;
-    case VirtImageType_VHD:
-      // When emulating VHD, make sure the while loop below only writes data
-      // available in the original image. Any VHD footer data must be written
-      // afterwards.
-      if(file_offset>=orig_image_size) {
-        to_write_later=to_write;
-        to_write=0;
-      } else if((file_offset+to_write)>orig_image_size) {
-        to_write_later=(file_offset+to_write)-orig_image_size;
-        to_write-=to_write_later;
-      }
-      break;
-  }
-
-  // Calculate block to write data to
-  cur_block=file_offset/CACHE_BLOCK_SIZE;
-  block_offset=file_offset%CACHE_BLOCK_SIZE;
-
-  while(to_write!=0) {
-    // Calculate how many bytes we have to write to this block
-    if(block_offset+to_write>CACHE_BLOCK_SIZE) {
-      to_write_now=CACHE_BLOCK_SIZE-block_offset;
-    } else to_write_now=to_write;
-    if(glob_xmount.cache.p_cache_blkidx[cur_block].Assigned==1) {
-      // Block was already cached
-      // Seek to data offset in cache file
-      if(fseeko(glob_xmount.cache.h_old_cache_file,
-             glob_xmount.cache.p_cache_blkidx[cur_block].off_data+block_offset,
-             SEEK_SET)!=0)
-      {
-        LOG_ERROR("Couldn't seek to cached block at address %" PRIu64 "\n",
-                  glob_xmount.cache.p_cache_blkidx[cur_block].off_data+
-                    block_offset);
-        return -1;
-      }
-      if(fwrite(p_write_buf,to_write_now,1,glob_xmount.cache.h_old_cache_file)!=1) {
-        LOG_ERROR("Error while writing %zu bytes "
-                  "to cache file at offset %" PRIu64 "!\n",
-                  to_write_now,
-                  glob_xmount.cache.p_cache_blkidx[cur_block].off_data+
-                    block_offset);
-        return -1;
-      }
-      LOG_DEBUG("Wrote %zd bytes at offset %" PRIu64
-                  " to cache file\n",to_write_now,
-                glob_xmount.cache.p_cache_blkidx[cur_block].off_data+
-                  block_offset);
-    } else {
-      // Uncached block. Need to cache entire new block
-      // Seek to end of cache file to append new cache block
-      fseeko(glob_xmount.cache.h_old_cache_file,0,SEEK_END);
-      glob_xmount.cache.p_cache_blkidx[cur_block].off_data=
-        ftello(glob_xmount.cache.h_old_cache_file);
-      if(block_offset!=0) {
-        // Changed data does not begin at block boundry. Need to prepend
-        // with data from virtual image file
-        XMOUNT_MALLOC(p_buf2,char*,block_offset*sizeof(char));
-        ret=ReadMorphedImageData(p_buf2,
-                                 file_offset-block_offset,
-                                 block_offset,
-                                 &read);
-        if(ret!=TRUE || read!=block_offset) {
-          LOG_ERROR("Couldn't read data from morphed image!\n")
-          return -1;
-        }
-        if(fwrite(p_buf2,block_offset,1,glob_xmount.cache.h_old_cache_file)!=1) {
-          LOG_ERROR("Couldn't writing %" PRIu64 " bytes "
-                    "to cache file at offset %" PRIu64 "!\n",
-                    block_offset,
-                    glob_xmount.cache.p_cache_blkidx[cur_block].off_data);
-          return -1;
-        }
-        LOG_DEBUG("Prepended changed data with %" PRIu64
-                  " bytes from virtual image file at offset %" PRIu64
-                  "\n",block_offset,file_offset-block_offset)
-        free(p_buf2);
-      }
-      if(fwrite(p_write_buf,to_write_now,1,glob_xmount.cache.h_old_cache_file)!=1) {
-        LOG_ERROR("Error while writing %zd bytes "
-                    "to cache file at offset %" PRIu64 "!\n",
-                  to_write_now,
-                  glob_xmount.cache.p_cache_blkidx[cur_block].off_data+
-                    block_offset);
-        return -1;
-      }
-      if(block_offset+to_write_now!=CACHE_BLOCK_SIZE) {
-        // Changed data does not end at block boundry. Need to append
-        // with data from virtual image file
-        XMOUNT_MALLOC(p_buf2,char*,(CACHE_BLOCK_SIZE-
-                                 (block_offset+to_write_now))*sizeof(char))
-        memset(p_buf2,0,CACHE_BLOCK_SIZE-(block_offset+to_write_now));
-        if((file_offset-block_offset)+CACHE_BLOCK_SIZE>orig_image_size) {
-          // Original image is smaller than full cache block
-          ret=ReadMorphedImageData(p_buf2,
-                                   file_offset+to_write_now,
-                                   orig_image_size-(file_offset+to_write_now),
-                                   &read);
-          if(ret!=TRUE || read!=orig_image_size-(file_offset+to_write_now)) {
-            LOG_ERROR("Couldn't read data from virtual image file!\n")
-            return -1;
-          }
-        } else {
-          ret=ReadMorphedImageData(p_buf2,
-                                   file_offset+to_write_now,
-                                   CACHE_BLOCK_SIZE-(block_offset+to_write_now),
-                                   &read);
-          if(ret!=TRUE || read!=CACHE_BLOCK_SIZE-(block_offset+to_write_now)) {
-            LOG_ERROR("Couldn't read data from virtual image file!\n")
-            return -1;
-          }
-        }
-        if(fwrite(p_buf2,
-                  CACHE_BLOCK_SIZE-(block_offset+to_write_now),
-                  1,
-                  glob_xmount.cache.h_old_cache_file)!=1)
-        {
-          LOG_ERROR("Error while writing %zd bytes "
-                      "to cache file at offset %" PRIu64 "!\n",
-                    CACHE_BLOCK_SIZE-(block_offset+to_write_now),
-                    glob_xmount.cache.p_cache_blkidx[cur_block].off_data+
-                      block_offset+to_write_now);
-          return -1;
-        }
-        free(p_buf2);
-      }
-      // All important data for this cache block has been written,
-      // flush all buffers and mark cache block as assigned
-      fflush(glob_xmount.cache.h_old_cache_file);
-#ifndef __APPLE__
-      ioctl(fileno(glob_xmount.cache.h_old_cache_file),BLKFLSBUF,0);
-#endif
-      glob_xmount.cache.p_cache_blkidx[cur_block].Assigned=1;
-      // Update cache block index entry in cache file
-      fseeko(glob_xmount.cache.h_old_cache_file,
-             sizeof(ts_CacheFileHeader)+
-               (cur_block*sizeof(ts_CacheFileBlockIndex)),
-             SEEK_SET);
-      if(fwrite(&(glob_xmount.cache.p_cache_blkidx[cur_block]),
-                sizeof(ts_CacheFileBlockIndex),
-                1,
-                glob_xmount.cache.h_old_cache_file)!=1)
-      {
-        LOG_ERROR("Couldn't update cache file block index!\n");
-        return -1;
-      }
-      LOG_DEBUG("Updated cache file block index: Number=%" PRIu64
-                  ", Data offset=%" PRIu64 "\n",
-                cur_block,
-                glob_xmount.cache.p_cache_blkidx[cur_block].off_data);
-    }
-    // Flush buffers
-    fflush(glob_xmount.cache.h_old_cache_file);
-#ifndef __APPLE__
-    ioctl(fileno(glob_xmount.cache.h_old_cache_file),BLKFLSBUF,0);
-#endif
-    block_offset=0;
-    cur_block++;
-    p_write_buf+=to_write_now;
-    to_write-=to_write_now;
-    file_offset+=to_write_now;
-  }
-
-  if(to_write_later!=0) {
-    // Cache virtual image type specific data preceeding original image data
-    switch(glob_xmount.output.VirtImageType) {
-      case VirtImageType_DD:
-      case VirtImageType_DMG:
-      case VirtImageType_VMDK:
-      case VirtImageType_VMDKS:
-      case VirtImageType_VDI:
-        break;
-      case VirtImageType_VHD:
-        // Micro$oft has choosen to use a footer rather then a header.
-        ret=SetVhdFileHeaderData(p_write_buf,
-                                 file_offset-orig_image_size,
-                                 to_write_later);
-        if(ret==-1) {
-          LOG_ERROR("Couldn't write data to virtual VHD file footer!\n")
-          return -1;
-        }
-        break;
-    }
-  }
-*/
 }
 
 //! Calculates an MD5 hash of the first HASH_AMOUNT bytes of the input image
@@ -2813,342 +2531,7 @@ static int LibXmount_Output_Write(char *p_buf,
                                   size_t count,
                                   size_t *p_written)
 {
-  return WriteMorphedImageData(p_buf,offset,count,p_read);
-}
-
-/*******************************************************************************
- * FUSE function implementation
- ******************************************************************************/
-//! FUSE access implementation
-/*!
- * \param p_path Path of file to get attributes from
- * \param perm Requested permissisons
- * \return 0 on success, negated error code on error
- */
-/*
-static int FuseAccess(const char *path, int perm) {
-  // TODO: Implement propper file permission handling
-  // http://www.cs.cf.ac.uk/Dave/C/node20.html
-  // Values for the second argument to access.
-  // These may be OR'd together.
-  //#define	R_OK	4		// Test for read permission.
-  //#define	W_OK	2		// Test for write permission.
-  //#define	X_OK	1		// Test for execute permission.
-  //#define	F_OK	0		// Test for existence.
-  return 0;
-}
-*/
-
-//! FUSE getattr implementation
-/*!
- * \param p_path Path of file to get attributes from
- * \param p_stat Pointer to stat structure to save attributes to
- * \return 0 on success, negated error code on error
- */
-static int FuseGetAttr(const char *p_path, struct stat *p_stat) {
-  memset(p_stat,0,sizeof(struct stat));
-  if(strcmp(p_path,"/")==0) {
-    // Attributes of mountpoint
-    p_stat->st_mode=S_IFDIR | 0777;
-    p_stat->st_nlink=2;
-  } else if(strcmp(p_path,glob_xmount.output.p_virtual_image_path)==0) {
-    // Attributes of virtual image
-    if(!glob_xmount.output.writable) p_stat->st_mode=S_IFREG | 0444;
-    else p_stat->st_mode=S_IFREG | 0666;
-    p_stat->st_nlink=1;
-    // Get output image file size
-    if(!GetOutputImageSize((uint64_t*)&(p_stat->st_size))) {
-      LOG_ERROR("Couldn't get image size!\n");
-      return -ENOENT;
-    }
-    // Make sure virtual image seems to be fully allocated (not sparse file).
-    p_stat->st_blocks=p_stat->st_size/512;
-    if(p_stat->st_size%512!=0) p_stat->st_blocks++;
-  } else if(strcmp(p_path,glob_xmount.output.p_info_path)==0) {
-    // Attributes of virtual image info file
-    p_stat->st_mode=S_IFREG | 0444;
-    p_stat->st_nlink=1;
-    // Get virtual image info file size
-    if(glob_xmount.output.p_info_file!=NULL) {
-      p_stat->st_size=strlen(glob_xmount.output.p_info_file);
-    } else p_stat->st_size=0;
-  } else return -ENOENT;
-  // Set uid and gid of all files to uid and gid of current process
-  p_stat->st_uid=getuid();
-  p_stat->st_gid=getgid();
-  return 0;
-}
-
-//! FUSE mkdir implementation
-/*!
- * \param p_path Directory path
- * \param mode Directory permissions
- * \return 0 on success, negated error code on error
- */
-static int FuseMkDir(const char *p_path, mode_t mode) {
-  // TODO: Implement
-  LOG_ERROR("Attempt to create directory \"%s\" "
-            "on read-only filesystem!\n",p_path)
-  return -1;
-}
-
-//! FUSE create implementation.
-/*!
- * \param p_path File to create
- * \param mode File mode
- * \param dev ??? but not used
- * \return 0 on success, negated error code on error
- */
-static int FuseMkNod(const char *p_path, mode_t mode, dev_t dev) {
-  // TODO: Implement
-  LOG_ERROR("Attempt to create illegal file \"%s\"\n",p_path)
-  return -1;
-}
-
-//! FUSE readdir implementation
-/*!
- * \param p_path Path from where files should be listed
- * \param p_buf Buffer to write file entrys to
- * \param filler Function to write dir entrys to buffer
- * \param offset ??? but not used
- * \param p_fi File info struct
- * \return 0 on success, negated error code on error
- */
-static int FuseReadDir(const char *p_path,
-                       void *p_buf,
-                       fuse_fill_dir_t filler,
-                       off_t offset,
-                       struct fuse_file_info *p_fi)
-{
-  // Ignore some params
-  (void)offset;
-  (void)p_fi;
-
-  if(strcmp(p_path,"/")==0) {
-    // Add std . and .. entrys
-    filler(p_buf,".",NULL,0);
-    filler(p_buf,"..",NULL,0);
-    // Add our virtual files (p+1 to ignore starting "/")
-    filler(p_buf,glob_xmount.output.p_virtual_image_path+1,NULL,0);
-    filler(p_buf,glob_xmount.output.p_info_path+1,NULL,0);
-  } else return -ENOENT;
-
-  return 0;
-}
-
-//! FUSE open implementation
-/*!
- * \param p_path Path to file to open
- * \param p_fi File info struct
- * \return 0 on success, negated error code on error
- */
-static int FuseOpen(const char *p_path, struct fuse_file_info *p_fi) {
-
-#define CHECK_OPEN_PERMS() {                                              \
-  if(!glob_xmount.output.writable && (p_fi->flags & 3)!=O_RDONLY) {       \
-    LOG_DEBUG("Attempt to open the read-only file \"%s\" for writing.\n", \
-              p_path)                                                     \
-    return -EACCES;                                                       \
-  }                                                                       \
-  return 0;                                                               \
-}
-
-  if(strcmp(p_path,glob_xmount.output.p_virtual_image_path)==0 ||
-     strcmp(p_path,glob_xmount.output.p_info_path)==0)
-  {
-    CHECK_OPEN_PERMS();
-  }
-
-#undef CHECK_OPEN_PERMS
-
-  LOG_DEBUG("Attempt to open inexistant file \"%s\".\n",p_path);
-  return -ENOENT;
-}
-
-//! FUSE read implementation
-/*!
- * \param p_path Path (relative to mount folder) of file to read data from
- * \param p_buf Pre-allocated buffer where read data should be written to
- * \param size Number of bytes to read
- * \param offset Offset to start reading at
- * \param p_fi: File info struct
- * \return Read bytes on success, negated error code on error
- */
-static int FuseRead(const char *p_path,
-                    char *p_buf,
-                    size_t size,
-                    off_t offset,
-                    struct fuse_file_info *p_fi)
-{
-  (void)p_fi;
-
-  int ret;
-  uint64_t len;
-
-#define READ_MEM_FILE(filebuf,filesize,filetypestr,mutex) {                    \
-  len=filesize;                                                                \
-  if(offset<len) {                                                             \
-    if(offset+size>len) {                                                      \
-      LOG_DEBUG("Attempt to read past EOF of virtual " filetypestr " file\n"); \
-      LOG_DEBUG("Adjusting read size from %u to %u\n",size,len-offset);        \
-      size=len-offset;                                                         \
-    }                                                                          \
-    pthread_mutex_lock(&mutex);                                                \
-    memcpy(p_buf,filebuf+offset,size);                                         \
-    pthread_mutex_unlock(&mutex);                                              \
-    LOG_DEBUG("Read %" PRIu64 " bytes at offset %" PRIu64                      \
-              " from virtual " filetypestr " file\n",size,offset);             \
-    ret=size;                                                                  \
-  } else {                                                                     \
-    LOG_DEBUG("Attempt to read behind EOF of virtual " filetypestr " file\n"); \
-    ret=0;                                                                     \
-  }                                                                            \
-}
-
-  if(strcmp(p_path,glob_xmount.output.p_virtual_image_path)==0) {
-    // Read data from virtual output file
-    // Wait for other threads to end reading/writing data
-    pthread_mutex_lock(&(glob_xmount.mutex_image_rw));
-    // Get requested data
-    if((ret=ReadOutputImageData(p_buf,offset,size))<0) {
-      LOG_ERROR("Couldn't read data from virtual image file!\n")
-    }
-    // Allow other threads to read/write data again
-    pthread_mutex_unlock(&(glob_xmount.mutex_image_rw));
-  } else if(strcmp(p_path,glob_xmount.output.p_info_path)==0) {
-    // Read data from virtual info file
-    READ_MEM_FILE(glob_xmount.output.p_info_file,
-                  strlen(glob_xmount.output.p_info_file),
-                  "info",
-                  glob_xmount.mutex_info_read);
-  } else {
-    // Attempt to read non existant file
-    LOG_DEBUG("Attempt to read from non existant file \"%s\"\n",p_path)
-    ret=-ENOENT;
-  }
-
-#undef READ_MEM_FILE
-
-  // TODO: Return size of read data!!!!!
-  return ret;
-}
-
-//! FUSE rename implementation
-/*!
- * \param p_path File to rename
- * \param p_npath New filename
- * \return 0 on error, negated error code on error
- */
-static int FuseRename(const char *p_path, const char *p_npath) {
-  // TODO: Implement
-  return -ENOENT;
-}
-
-//! FUSE rmdir implementation
-/*!
- * \param p_path Directory to delete
- * \return 0 on success, negated error code on error
- */
-static int FuseRmDir(const char *p_path) {
-  // TODO: Implement
-  return -1;
-}
-
-//! FUSE unlink implementation
-/*!
- * \param p_path File to delete
- * \return 0 on success, negated error code on error
- */
-static int FuseUnlink(const char *p_path) {
-  // TODO: Implement
-  return -1;
-}
-
-//! FUSE statfs implementation
-/*!
- * \param p_path Get stats for fs that the specified file resides in
- * \param stats Stats
- * \return 0 on success, negated error code on error
- */
-/*
-static int FuseStatFs(const char *p_path, struct statvfs *stats) {
-  struct statvfs CacheFileFsStats;
-  int ret;
-
-  if(glob_xmount.writable==TRUE) {
-    // If write support is enabled, return stats of fs upon which cache file
-    // resides in
-    if((ret=statvfs(glob_xmount.p_cache_file,&CacheFileFsStats))==0) {
-      memcpy(stats,&CacheFileFsStats,sizeof(struct statvfs));
-      return 0;
-    } else {
-      LOG_ERROR("Couldn't get stats for fs upon which resides \"%s\"\n",
-                glob_xmount.p_cache_file)
-      return ret;
-    }
-  } else {
-    // TODO: Return read only
-    return 0;
-  }
-}
-*/
-
-// FUSE write implementation
-/*!
- * \param p_buf Buffer containing data to write
- * \param size Number of bytes to write
- * \param offset Offset to start writing at
- * \param p_fi: File info struct
- *
- * Returns:
- *   Written bytes on success, negated error code on error
- */
-static int FuseWrite(const char *p_path,
-                     const char *p_buf,
-                     size_t size,
-                     off_t offset,
-                     struct fuse_file_info *p_fi)
-{
-  (void)p_fi;
-
-  uint64_t len;
-
-  if(strcmp(p_path,glob_xmount.output.p_virtual_image_path)==0) {
-    // Wait for other threads to end reading/writing data
-    pthread_mutex_lock(&(glob_xmount.mutex_image_rw));
-
-    // Get output image file size
-    if(!GetOutputImageSize(&len)) {
-      LOG_ERROR("Couldn't get virtual image size!\n")
-      pthread_mutex_unlock(&(glob_xmount.mutex_image_rw));
-      return 0;
-    }
-    if(offset<len) {
-      if(offset+size>len) size=len-offset;
-      if(WriteOutputImageData(p_buf,offset,size)!=size) {
-        LOG_ERROR("Couldn't write data to virtual image file!\n")
-        pthread_mutex_unlock(&(glob_xmount.mutex_image_rw));
-        return 0;
-      }
-    } else {
-      LOG_DEBUG("Attempt to write past EOF of virtual image file\n")
-      pthread_mutex_unlock(&(glob_xmount.mutex_image_rw));
-      return 0;
-    }
-
-    // Allow other threads to read/write data again
-    pthread_mutex_unlock(&(glob_xmount.mutex_image_rw));
-  } else if(strcmp(p_path,glob_xmount.output.p_info_path)==0) {
-    // Attempt to write data to read only image info file
-    LOG_DEBUG("Attempt to write data to virtual info file\n");
-    return -ENOENT;
-  } else {
-    // Attempt to write to non existant file
-    LOG_DEBUG("Attempt to write to the non existant file \"%s\"\n",p_path)
-    return -ENOENT;
-  }
-
-  return size;
+  return WriteMorphedImageData(p_buf,offset,count,p_written);
 }
 
 /*******************************************************************************
@@ -3163,17 +2546,17 @@ int main(int argc, char *argv[]) {
   // Set implemented FUSE functions
   struct fuse_operations xmount_operations = {
     //.access=FuseAccess,
-    .getattr=FuseGetAttr,
-    .mkdir=FuseMkDir,
-    .mknod=FuseMkNod,
-    .open=FuseOpen,
-    .readdir=FuseReadDir,
-    .read=FuseRead,
-    .rename=FuseRename,
-    .rmdir=FuseRmDir,
+    .getattr=Xmount_FuseGetAttr,
+    .mkdir=Xmount_FuseMkDir,
+    .mknod=Xmount_FuseMkNod,
+    .open=Xmount_FuseOpen,
+    .readdir=Xmount_FuseReadDir,
+    .read=Xmount_FuseRead,
+    .rename=Xmount_FuseRename,
+    .rmdir=Xmount_FuseRmDir,
     //.statfs=FuseStatFs,
-    .unlink=FuseUnlink,
-    .write=FuseWrite
+    .unlink=Xmount_FuseUnlink,
+    .write=Xmount_FuseWrite
   };
 
   // Disable std output / input buffering

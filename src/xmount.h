@@ -18,6 +18,11 @@
 * this program. If not, see <http://www.gnu.org/licenses/>.                    *
 *******************************************************************************/
 
+#ifndef XMOUNT_H
+#define XMOUNT_H
+
+#include <gidafs.h>
+
 #include "../libxmount_input/libxmount_input.h"
 #include "../libxmount_morphing/libxmount_morphing.h"
 #include "../libxmount_output/libxmount_output.h"
@@ -290,3 +295,18 @@ typedef struct s_XmountData {
   //! Mutex to control concurrent read access on info file
   pthread_mutex_t mutex_info_read;
 } ts_XmountData;
+
+/*******************************************************************************
+ * Global vars
+ ******************************************************************************/
+//! Struct that contains various runtime configuration options
+ts_XmountData glob_xmount;
+
+/*******************************************************************************
+ * Xmount functions
+ ******************************************************************************/
+int GetOutputImageSize(uint64_t*);
+int ReadOutputImageData(char*, off_t, size_t);
+int WriteOutputImageData(const char*, off_t, size_t);
+
+#endif // XMOUNT_H

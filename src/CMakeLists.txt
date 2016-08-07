@@ -14,7 +14,7 @@ set(LIBS ${LIBS} "dl")
 
 add_definitions(-DXMOUNT_LIBRARY_PATH="${CMAKE_INSTALL_PREFIX}/lib/xmount")
 
-add_executable(xmount xmount.c md5.c ../libxmount/libxmount.c)
+add_executable(xmount xmount.c xmount_fuse.c md5.c ../libxmount/libxmount.c)
 
 target_link_libraries(xmount ${LIBS})
 

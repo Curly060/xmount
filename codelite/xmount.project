@@ -9,6 +9,8 @@
     <File Name="../src/md5.h"/>
     <File Name="../src/xmount.c"/>
     <File Name="../src/xmount.h"/>
+    <File Name="../src/xmount_fuse.c"/>
+    <File Name="../src/xmount_fuse.h"/>
   </VirtualDirectory>
   <VirtualDirectory Name="libxmount">
     <File Name="../libxmount/endianness.h"/>

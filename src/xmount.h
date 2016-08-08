@@ -44,14 +44,24 @@
 /*******************************************************************************
  * Xmount specific structures
  ******************************************************************************/
+//! Structure containing xmount arguments
+typedef struct s_XmountArgs {
+  //! Cache file
+  char *p_cache_file;
+  //! If set to 1, overwrite any existing cache file
+  uint8_t overwrite_cache;
+} ts_XmountArgs;
+
 //! Structure containing global xmount runtime infos
 typedef struct s_XmountData {
+  //! Parsed xmount arguments
+  ts_XmountArgs args;
   //! Input image related data
   ts_InputData input;
   //! Morphing related data
   ts_MorphingData morphing;
-  //! Cache file related data
-  ts_CacheData cache;
+  //! Cache file handle
+  pts_XmountCacheHandle h_cache;
   //! Output image related data
   ts_OutputData output;
   //! Enable debug output

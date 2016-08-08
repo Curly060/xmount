@@ -52,6 +52,32 @@ typedef enum e_XmountCache_Error {
   e_XmountCache_Error_FailedCacheInit,
   //! Unable to open xmount cache file
   e_XmountCache_Error_FailedOpeningCache,
+  //! Failed to get block cache index size
+  e_XmountCache_Error_FailedGettingIndexSize,
+  //! Invalid block cache index size
+  e_XmountCache_Error_InvalidIndexSize,
+  //! Unable to read block cache index
+  e_XmountCache_Error_FailedReadingIndex,
+  //! Failed closing cache block index
+  e_XmountCache_Error_FailedClosingIndex,
+  //! Failed closing cache block index
+  e_XmountCache_Error_FailedClosingBlockCache,
+  //! Failed closing cache block index
+  e_XmountCache_Error_FailedClosingCache,
+  //! Failed to update block cache index
+  e_XmountCache_Error_FailedUpdatingIndex,
+  //! Invalid block cache index specified
+  e_XmountCache_Error_InvalidIndex,
+  //! Block has not yet been cached
+  e_XmountCache_Error_UncachedBlock,
+  //! Invalid buffer specified
+  e_XmountCache_Error_InvalidBuffer,
+  //! Request would read beyond a single cache block
+  e_XmountCache_Error_ReadBeyondBlockBounds,
+  //! Failed reading cached data
+  e_XmountCache_Error_FailedReadingBlockCache,
+  //! Failed writing cached data
+  e_XmountCache_Error_FailedWritingBlockCache,
 } te_XmountCache_Error;
 
 /*******************************************************************************
@@ -164,7 +190,8 @@ te_XmountCache_Error XmountCache_BlockCacheAppend(pts_XmountCacheHandle p_h,
 /*!
  * \brief Chech if a block has previously been chached
  *
- * Checks if the given block has previously been cached.
+ * Checks if the given block has previously been cached. If it hasn't,
+ * e_XmountCache_Error_UncachedBlock is returned.
  *
  * \param p_handle Xmount cache handle
  * \param block Number of block to check

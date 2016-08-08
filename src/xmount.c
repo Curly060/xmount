@@ -459,14 +459,14 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
         // Next parameter must be cache file to read/write changes from/to
         if((i+1)<argc) {
           i++;
-          XMOUNT_STRSET(glob_xmount.cache.p_cache_file,pp_argv[i])
+          XMOUNT_STRSET(glob_xmount.args.p_cache_file,pp_argv[i])
           glob_xmount.output.writable=TRUE;
         } else {
           LOG_ERROR("You must specify a cache file!\n")
           return FALSE;
         }
         LOG_DEBUG("Enabling virtual write support using cache file \"%s\"\n",
-                  glob_xmount.cache.p_cache_file)
+                  glob_xmount.args.p_cache_file)
       } else if(strcmp(pp_argv[i],"--in")==0) {
         // Specify input image type and source files
         if((i+2)<argc) {
@@ -623,15 +623,15 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
         // Next parameter must be cache file to read/write changes from/to
         if((i+1)<argc) {
           i++;
-          XMOUNT_STRSET(glob_xmount.cache.p_cache_file,pp_argv[i])
+          XMOUNT_STRSET(glob_xmount.args.p_cache_file,pp_argv[i])
           glob_xmount.output.writable=TRUE;
-          glob_xmount.cache.overwrite_cache=TRUE;
+          glob_xmount.args.overwrite_cache=TRUE;
         } else {
           LOG_ERROR("You must specify a cache file!\n")
           return FALSE;
         }
         LOG_DEBUG("Enabling virtual write support overwriting cache file %s\n",
-                  glob_xmount.cache.p_cache_file)
+                  glob_xmount.args.p_cache_file)
       } else if(strcmp(pp_argv[i],"--sizelimit")==0) {
         // Set input image size limit
         if((i+1)<argc) {
@@ -1349,6 +1349,10 @@ static int FindOutputLib() {
 }
 
 static void InitResources() {
+  // Args
+  glob_xmount.args.overwrite_cache=FALSE;
+  glob_xmount.args.p_cache_file=NULL;
+
   // Input
   glob_xmount.input.libs_count=0;
   glob_xmount.input.pp_libs=NULL;
@@ -1375,13 +1379,7 @@ static void InitResources() {
   glob_xmount.morphing.input_image_functions.Read=&LibXmount_Morphing_Read;
 
   // Cache
-  glob_xmount.cache.overwrite_cache=FALSE;
-  glob_xmount.cache.p_cache_file=NULL;
-  glob_xmount.cache.h_cache_file=NULL;
-  glob_xmount.cache.h_block_cache=NULL;
-  glob_xmount.cache.h_block_cache_index=NULL;
-  glob_xmount.cache.p_block_cache_index=NULL;
-  glob_xmount.cache.block_cache_index_len=0;
+  glob_xmount.h_cache=NULL;
 
   // Output
   glob_xmount.output.libs_count=0;
@@ -1413,7 +1411,7 @@ static void InitResources() {
  */
 static void FreeResources() {
   int ret;
-  teGidaFsError gidafs_ret=eGidaFsError_None;
+  te_XmountCache_Error cache_ret=e_XmountCache_Error_None;
 
   LOG_DEBUG("Freeing all resources\n");
 
@@ -1465,34 +1463,13 @@ static void FreeResources() {
     free(glob_xmount.output.p_virtual_image_path);
 
   // Cache
-  if(glob_xmount.cache.h_cache_file!=NULL) {
-    if(glob_xmount.cache.p_block_cache_index!=NULL)
-      free(glob_xmount.cache.p_block_cache_index);
-    if(glob_xmount.cache.h_block_cache_index!=NULL) {
-      gidafs_ret=GidaFsLib_CloseFile(glob_xmount.cache.h_cache_file,
-                                     &(glob_xmount.cache.h_block_cache_index));
-      if(gidafs_ret!=eGidaFsError_None) {
-        LOG_ERROR("Unable to close block cache index file: Error code %u: "
-                    "Ignoring!\n",
-                  gidafs_ret)
-      }
-    }
-    if(glob_xmount.cache.h_block_cache!=NULL) {
-      gidafs_ret=GidaFsLib_CloseFile(glob_xmount.cache.h_cache_file,
-                                     &(glob_xmount.cache.h_block_cache));
-      if(gidafs_ret!=eGidaFsError_None) {
-        LOG_ERROR("Unable to close block cache file: Error code %u: "
-                    "Ignoring!\n",
-                  gidafs_ret)
-      }
-    }
-    gidafs_ret=GidaFsLib_CloseFs(&(glob_xmount.cache.h_cache_file));
-    if(gidafs_ret!=eGidaFsError_None) {
+  if(glob_xmount.h_cache!=NULL) {
+    cache_ret=XmountCache_Close(&(glob_xmount.h_cache));
+    if(cache_ret!=e_XmountCache_Error_None) {
       LOG_ERROR("Unable to close cache file: Error code %u: Ignoring!\n",
-                gidafs_ret)
+                cache_ret);
     }
   }
-  if(glob_xmount.cache.p_cache_file!=NULL) free(glob_xmount.cache.p_cache_file);
 
   // Morphing
   if(glob_xmount.morphing.p_functions!=NULL) {
@@ -1581,6 +1558,11 @@ static void FreeResources() {
       free(glob_xmount.input.pp_libs[i]);
     }
     free(glob_xmount.input.pp_libs);
+  }
+
+  // Args
+  if(glob_xmount.args.p_cache_file!=NULL) {
+    XMOUNT_FREE(glob_xmount.args.p_cache_file);
   }
 
   // Before we return, initialize everything in case ReleaseResources would be
@@ -1782,6 +1764,7 @@ int main(int argc, char *argv[]) {
   int ret;
   int fuse_ret;
   char *p_err_msg;
+  te_XmountCache_Error cache_ret=e_XmountCache_Error_None;
 
   // Set implemented FUSE functions
   struct fuse_operations xmount_operations = {
@@ -1806,7 +1789,7 @@ int main(int argc, char *argv[]) {
   // Init glob_xmount
   InitResources();
 
-  // Load input and morphing libs
+  // Load input, morphing and output libs
   if(!LoadLibs()) {
     LOG_ERROR("Unable to load any libraries!\n")
     return 1;
@@ -1838,6 +1821,7 @@ int main(int argc, char *argv[]) {
   if(glob_xmount.morphing.p_morph_type==NULL) {
     XMOUNT_STRSET(glob_xmount.morphing.p_morph_type,"combine");
   }
+  // TODO: Add default output image format here
 
   // Check if mountpoint is a valid dir
   if(stat(glob_xmount.p_mountpoint,&file_stat)!=0) {
@@ -2146,11 +2130,25 @@ int main(int argc, char *argv[]) {
 
   if(glob_xmount.output.writable) {
     // Init cache file and cache file block index
+    // TODO: Add cache file creration / opening
+/*
+    if(glob_xmount.args.overwrite_cache==TRUE) {
+      cache_ret=XmountCache_Create(&(glob_xmount.h_cache),
+                                   glob_xmount.args.p_cache_file,
+
+
+    } else {
+      cache_ret=XmountCache_Open
+    }
+
+
+    te_XmountCache_Error cache_ret=e_XmountCache_Error_None;
     if(!InitCacheFile()) {
       LOG_ERROR("Couldn't initialize cache file!\n")
       FreeResources();
       return 1;
     }
+*/
     LOG_DEBUG("Cache file initialized successfully\n")
   }
 

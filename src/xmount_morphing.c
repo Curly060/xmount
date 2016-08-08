@@ -16,6 +16,7 @@
 *******************************************************************************/
 
 #include <errno.h>
+#include <string.h> // For memcpy
 
 #include "xmount_morphing.h"
 #include "xmount.h"
@@ -70,7 +71,8 @@ int ReadMorphedImageData(char *p_buf,
   size_t read=0;
   size_t to_read=0;
   int ret;
-  teGidaFsError gidafs_ret=eGidaFsError_None;
+  uint8_t is_block_cached=FALSE;
+  te_XmountCache_Error cache_ret=e_XmountCache_Error_None;
 
   // Make sure we aren't reading past EOF of image file
   if(GetMorphedImageSize(&image_size)!=TRUE) {
@@ -93,45 +95,55 @@ int ReadMorphedImageData(char *p_buf,
   } else to_read=size;
 
   // Calculate block to start reading data from
-  cur_block=offset/CACHE_BLOCK_SIZE;
-  block_off=offset%CACHE_BLOCK_SIZE;
+  cur_block=offset/XMOUNT_CACHE_BLOCK_SIZE;
+  block_off=offset%XMOUNT_CACHE_BLOCK_SIZE;
 
   // Read image data
   while(to_read!=0) {
     // Calculate how many bytes we have to read from this block
-    if(block_off+to_read>CACHE_BLOCK_SIZE) {
-      cur_to_read=CACHE_BLOCK_SIZE-block_off;
+    if(block_off+to_read>XMOUNT_CACHE_BLOCK_SIZE) {
+      cur_to_read=XMOUNT_CACHE_BLOCK_SIZE-block_off;
     } else cur_to_read=to_read;
 
-    // Check if block is cached
-    if(glob_xmount.output.writable==TRUE &&
-       glob_xmount.cache.p_block_cache_index[cur_block]!=CACHE_BLOCK_FREE)
-    {
-      // Write support enabled and need to read altered data from cachefile
-      LOG_DEBUG("Reading %zu bytes at offset %" PRIu64
-                  " from block cache file\n",
-                cur_to_read,
-                glob_xmount.cache.p_block_cache_index[cur_block]+block_off)
-
-      gidafs_ret=GidaFsLib_ReadFile(glob_xmount.cache.h_cache_file,
-                                    glob_xmount.cache.h_block_cache,
-                                    glob_xmount.cache.
-                                      p_block_cache_index[cur_block]+block_off,
-                                    cur_to_read,
-                                    p_buf,
-                                    &read);
-      if(gidafs_ret!=eGidaFsError_None || read!=cur_to_read) {
-        LOG_ERROR("Unable to read cached data from block %" PRIu64
-                    ": Error code %u!\n",
+    // Determine if we have to read cached data
+    is_block_cached=FALSE;
+    if(glob_xmount.output.writable==TRUE) {
+      cache_ret=XmountCache_IsBlockCached(glob_xmount.h_cache,cur_block);
+      if(cache_ret==e_XmountCache_Error_None) is_block_cached=TRUE;
+      else if(cache_ret!=e_XmountCache_Error_UncachedBlock) {
+        LOG_ERROR("Unable to determine if block %" PRIu64 " is cached: "
+                    "Error code %u!\n",
                   cur_block,
-                  gidafs_ret);
+                  cache_ret);
+        return -EIO;
+      }
+    }
+
+    // Check if block is cached
+    if(is_block_cached==TRUE) {
+      // Write support enabled and need to read altered data from cachefile
+      LOG_DEBUG("Reading %zu bytes from block cache file\n",cur_to_read);
+
+      cache_ret=XmountCache_BlockCacheRead(glob_xmount.h_cache,
+                                           p_buf,
+                                           cur_block,
+                                           block_off,
+                                           cur_to_read);
+      if(cache_ret!=e_XmountCache_Error_None) {
+        LOG_ERROR("Unable to read %" PRIu64
+                    " bytes of cached data from cache block %" PRIu64
+                    " at cache block offset %" PRIu64 ": Error code %u!\n",
+                  cur_to_read,
+                  cur_block,
+                  block_off,
+                  cache_ret);
         return -EIO;
       }
     } else {
       // No write support or data not cached
       ret=glob_xmount.morphing.p_functions->Read(glob_xmount.morphing.p_handle,
                                                  p_buf,
-                                                 (cur_block*CACHE_BLOCK_SIZE)+
+                                                 (cur_block*XMOUNT_CACHE_BLOCK_SIZE)+
                                                    block_off,
                                                  cur_to_read,
                                                  &read);
@@ -146,7 +158,7 @@ int ReadMorphedImageData(char *p_buf,
       LOG_DEBUG("Read %" PRIu64 " bytes at offset %" PRIu64
                   " from morphed image file\n",
                 cur_to_read,
-                (cur_block*CACHE_BLOCK_SIZE)+block_off);
+                (cur_block*XMOUNT_CACHE_BLOCK_SIZE)+block_off);
     }
 
     cur_block++;
@@ -181,8 +193,9 @@ int WriteMorphedImageData(const char *p_buf,
   size_t written=0;
   size_t to_write=0;
   int ret;
-  teGidaFsError gidafs_ret=eGidaFsError_None;
   char *p_buf2=NULL;
+  uint8_t is_block_cached=FALSE;
+  te_XmountCache_Error cache_ret=e_XmountCache_Error_None;
 
   // Make sure we aren't writing past EOF of image file
   if(GetMorphedImageSize(&image_size)!=TRUE) {
@@ -205,52 +218,62 @@ int WriteMorphedImageData(const char *p_buf,
   } else to_write=count;
 
   // Calculate block to start writing data to
-  cur_block=offset/CACHE_BLOCK_SIZE;
-  block_off=offset%CACHE_BLOCK_SIZE;
+  cur_block=offset/XMOUNT_CACHE_BLOCK_SIZE;
+  block_off=offset%XMOUNT_CACHE_BLOCK_SIZE;
 
   while(to_write!=0) {
     // Calculate how many bytes we have to write to this block
-    if(block_off+to_write>CACHE_BLOCK_SIZE) {
-      cur_to_write=CACHE_BLOCK_SIZE-block_off;
+    if(block_off+to_write>XMOUNT_CACHE_BLOCK_SIZE) {
+      cur_to_write=XMOUNT_CACHE_BLOCK_SIZE-block_off;
     } else cur_to_write=to_write;
 
+    // Determine if block is already in cache
+    is_block_cached=FALSE;
+    cache_ret=XmountCache_IsBlockCached(glob_xmount.h_cache,cur_block);
+    if(cache_ret==e_XmountCache_Error_None) is_block_cached=TRUE;
+    else if(cache_ret!=e_XmountCache_Error_UncachedBlock) {
+      LOG_ERROR("Unable to determine if block %" PRIu64 " is cached: "
+                  "Error code %u!\n",
+                cur_block,
+                cache_ret);
+      return -EIO;
+    }
+
     // Check if block is cached
-    if(glob_xmount.cache.p_block_cache_index[cur_block]!=CACHE_BLOCK_FREE) {
+    if(is_block_cached==TRUE) {
       // Block is cached
-      gidafs_ret=GidaFsLib_WriteFile(glob_xmount.cache.h_cache_file,
-                                     glob_xmount.cache.h_block_cache,
-                                     glob_xmount.cache.
-                                       p_block_cache_index[cur_block]+block_off,
-                                     cur_to_write,
-                                     p_buf,
-                                     &written);
-      if(gidafs_ret!=eGidaFsError_None || written!=cur_to_write) {
-        LOG_ERROR("Unable to write data to cached block %" PRIu64
-                    ": Error code %u!\n",
+      cache_ret=XmountCache_BlockCacheWrite(glob_xmount.h_cache,
+                                            p_buf,
+                                            cur_block,
+                                            block_off,
+                                            cur_to_write);
+      if(cache_ret!=e_XmountCache_Error_None) {
+        LOG_ERROR("Unable to write %" PRIu64
+                    " bytes of data to cache block %" PRIu64
+                    " at cache block offset %" PRIu64 ": Error code %u!\n",
+                  cur_to_write,
                   cur_block,
-                  gidafs_ret);
+                  block_off,
+                  cache_ret);
         return -EIO;
       }
 
-      LOG_DEBUG("Wrote %" PRIu64 " bytes at offset %" PRIu64
-                  " to block cache file\n",
-                cur_to_write,
-                glob_xmount.cache.p_block_cache_index[cur_block]+block_off);
+      LOG_DEBUG("Wrote %" PRIu64 " bytes to block cache\n",cur_to_write);
     } else {
       // Uncached block. Need to cache entire new block
       // Prepare new write buffer
-      XMOUNT_MALLOC(p_buf2,char*,CACHE_BLOCK_SIZE);
-      memset(p_buf2,0x00,CACHE_BLOCK_SIZE);
+      XMOUNT_MALLOC(p_buf2,char*,XMOUNT_CACHE_BLOCK_SIZE);
+      memset(p_buf2,0x00,XMOUNT_CACHE_BLOCK_SIZE);
 
       // Read full block from morphed image
-      cur_to_read=CACHE_BLOCK_SIZE;
-      if((cur_block*CACHE_BLOCK_SIZE)+CACHE_BLOCK_SIZE>image_size) {
-        cur_to_read=CACHE_BLOCK_SIZE-(((cur_block*CACHE_BLOCK_SIZE)+
-                                         CACHE_BLOCK_SIZE)-image_size);
+      cur_to_read=XMOUNT_CACHE_BLOCK_SIZE;
+      if((cur_block*XMOUNT_CACHE_BLOCK_SIZE)+XMOUNT_CACHE_BLOCK_SIZE>image_size) {
+        cur_to_read=XMOUNT_CACHE_BLOCK_SIZE-(((cur_block*XMOUNT_CACHE_BLOCK_SIZE)+
+                                         XMOUNT_CACHE_BLOCK_SIZE)-image_size);
       }
       ret=glob_xmount.morphing.p_functions->Read(glob_xmount.morphing.p_handle,
                                                  p_buf2,
-                                                 cur_block*CACHE_BLOCK_SIZE,
+                                                 cur_block*XMOUNT_CACHE_BLOCK_SIZE,
                                                  cur_to_read,
                                                  &read);
       if(ret!=0 || read!=cur_to_read) {
@@ -266,51 +289,20 @@ int WriteMorphedImageData(const char *p_buf,
       // Set changed data
       memcpy(p_buf2+block_off,p_buf,cur_to_write);
 
-      // Write new block to block cache
-      // Get current block cache size
-      gidafs_ret=GidaFsLib_GetFileSize(glob_xmount.cache.h_cache_file,
-                                       glob_xmount.cache.h_block_cache,
-                                       &(glob_xmount.cache.
-                                         p_block_cache_index[cur_block]));
-      if(gidafs_ret!=eGidaFsError_None) {
-        LOG_ERROR("Unable to get current block cache size: Error code %u!\n",
-                  gidafs_ret);
-        XMOUNT_FREE(p_buf2);
-        return -EIO;
-      }
-      // Append new block
-      gidafs_ret=GidaFsLib_WriteFile(glob_xmount.cache.h_cache_file,
-                                     glob_xmount.cache.h_block_cache,
-                                     glob_xmount.cache.
-                                       p_block_cache_index[cur_block],
-                                     CACHE_BLOCK_SIZE,
-                                     p_buf2,
-                                     &written);
-      if(gidafs_ret!=eGidaFsError_None || written!=cur_to_write) {
-        LOG_ERROR("Unable to write data to cached block %" PRIu64
+      cache_ret=XmountCache_BlockCacheAppend(glob_xmount.h_cache,
+                                             p_buf,
+                                             cur_block);
+      if(cache_ret!=e_XmountCache_Error_None) {
+        LOG_ERROR("Unable to append new block cache block %" PRIu64
                     ": Error code %u!\n",
                   cur_block,
-                  gidafs_ret);
+                  cache_ret);
         XMOUNT_FREE(p_buf2);
         return -EIO;
       }
       XMOUNT_FREE(p_buf2);
-      // Update on-disk block cache index
-      ret=UpdateBlockCacheIndex(cur_block,
-                                glob_xmount.cache.p_block_cache_index[
-                                  cur_block]);
-      if(ret!=TRUE) {
-        LOG_ERROR("Unable to update block cache index %" PRIu64
-                    ": Error code %u!\n",
-                  cur_block,
-                  gidafs_ret);
-        return -EIO;
-      }
 
-      LOG_DEBUG("Updated cache file block index: Number=%" PRIu64
-                  ", Data offset=%" PRIu64 "\n",
-                cur_block,
-                glob_xmount.cache.p_block_cache_index[cur_block]);
+      LOG_DEBUG("Appended new block cache block %" PRIu64 "\n",cur_block);
     }
 
     block_off=0;

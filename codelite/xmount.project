@@ -11,6 +11,14 @@
     <File Name="../src/xmount.h"/>
     <File Name="../src/xmount_fuse.c"/>
     <File Name="../src/xmount_fuse.h"/>
+    <File Name="../src/xmount_input.c"/>
+    <File Name="../src/xmount_input.h"/>
+    <File Name="../src/xmount_morphing.c"/>
+    <File Name="../src/xmount_morphing.h"/>
+    <File Name="../src/xmount_output.c"/>
+    <File Name="../src/xmount_output.h"/>
+    <File Name="../src/xmount_cache.c"/>
+    <File Name="../src/xmount_cache.h"/>
   </VirtualDirectory>
   <VirtualDirectory Name="libxmount">
     <File Name="../libxmount/endianness.h"/>

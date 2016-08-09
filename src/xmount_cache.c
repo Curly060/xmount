@@ -313,10 +313,10 @@ te_XmountCache_Error XmountCache_Open(pts_XmountCacheHandle *pp_h,
   if(p_file==NULL) return e_XmountCache_Error_InvalidString;
   if(strlen(p_file)==0) return e_XmountCache_Error_InvalidFile;
 
-  // Make sure file exists
+  // If file does not exist, create it
   if(XmountCache_FileExists(p_file)!=e_XmountCache_Error_None) {
-    // Given file does not exist. This is fatal!
-    return e_XmountCache_Error_InexistingFile;
+    // Given file does not exist. Call XmountCache_Create instead!
+    return XmountCache_Create(pp_h,p_file,image_size,0);
   }
 
   // Create new handle

@@ -73,4 +73,140 @@ typedef struct s_InputData {
 
 int ReadInputImageData(pts_InputImage, char*, off_t, size_t, size_t*);
 
+
+
+
+
+/*******************************************************************************
+ * Public definitions / macros
+ ******************************************************************************/
+
+
+/*******************************************************************************
+ * Public types / structures / enums
+ ******************************************************************************/
+typedef struct s_XmountInputHandle *pts_XmountInputHandle;
+
+typedef enum e_XmountInput_Error {
+  //! No error
+  e_XmountInput_Error_None=0,
+  //! Error to allocate memory
+  e_XmountInput_Error_Alloc,
+  //! Invalid input handle
+  e_XmountInput_Error_InvalidHandle,
+  //! Invalid pointer to an input handle
+  e_XmountInput_Error_InvalidHandlePointer,
+
+/*
+  //! A given string is invalid
+  e_XmountCache_Error_InvalidString,
+  //! A given file path / name is invalid
+  e_XmountCache_Error_InvalidFile,
+  //! A given file does not exist
+  e_XmountCache_Error_InexistingFile,
+  //! A given file exists
+  e_XmountCache_Error_ExistingFile,
+  //! Unable to create needed xmount structures inside cache file
+  e_XmountCache_Error_FailedCacheInit,
+  //! Unable to open xmount cache file
+  e_XmountCache_Error_FailedOpeningCache,
+  //! Failed to get block cache index size
+  e_XmountCache_Error_FailedGettingIndexSize,
+  //! Invalid block cache index size
+  e_XmountCache_Error_InvalidIndexSize,
+  //! Unable to read block cache index
+  e_XmountCache_Error_FailedReadingIndex,
+  //! Failed closing cache block index
+  e_XmountCache_Error_FailedClosingIndex,
+  //! Failed closing cache block index
+  e_XmountCache_Error_FailedClosingBlockCache,
+  //! Failed closing cache block index
+  e_XmountCache_Error_FailedClosingCache,
+  //! Failed to update block cache index
+  e_XmountCache_Error_FailedUpdatingIndex,
+  //! Invalid block cache index specified
+  e_XmountCache_Error_InvalidIndex,
+  //! Block has not yet been cached
+  e_XmountCache_Error_UncachedBlock,
+  //! Invalid buffer specified
+  e_XmountCache_Error_InvalidBuffer,
+  //! Request would read beyond a single cache block
+  e_XmountCache_Error_ReadBeyondBlockBounds,
+  //! Failed reading cached data
+  e_XmountCache_Error_FailedReadingBlockCache,
+  //! Failed writing cached data
+  e_XmountCache_Error_FailedWritingBlockCache,
+*/
+} te_XmountInput_Error;
+
+/*******************************************************************************
+ * Public functions declarations
+ ******************************************************************************/
+/*!
+ * \brief Create new input handle
+ *
+ * Creates a new input handle.
+ *
+ * \param pp_h Pointer to input handle
+ * \return e_XmountInput_Error_None on success
+ */
+te_XmountInput_Error XmountInput_CreateHandle(pts_XmountInputHandle *pp_h);
+
+/*!
+ * \brief Destroy input handle
+ *
+ * Invalidates the given handle and frees all used resources.
+ *
+ * \param pp_h Pointer to input handle
+ * \return e_XmountInput_Error_None on success
+ */
+te_XmountInput_Error XmountInput_DestroyHandle(pts_XmountInputHandle *pp_h);
+
+/*!
+ * \brief XXX
+ *
+ * XXX
+ *
+ * \param p_h Input handle
+ */
+te_XmountInput_Error XmountInput_LoadLib(pts_XmountInputHandle p_h);
+
+/*!
+ * \brief Add an input image
+ *
+ * Adds the given input image to the list of available input images.
+ *
+ * \param p_h Input handle
+ * \param p_format Input image format string as given by the user
+ * \param files_count Amount of files specified by the user
+ * \param pp_files Array containing all specified files
+ * \return e_XmountInput_Error_None on success
+ */
+te_XmountInput_Error XmountInput_AddImage(pts_XmountInputHandle p_h,
+                                          const char *p_format,
+                                          uint64_t files_count,
+                                          const char **pp_files);
+
+te_XmountInput_Error XmountInput_SetInputOffset(pts_XmountInputHandle p_h,
+                                                uint64_t offset);
+
+te_XmountInput_Error XmountInput_SetInputSizeLimit(pts_XmountInputHandle p_h,
+                                                   uint64_t size_limit);
+
+te_XmountInput_Error XmountInput_GetSize(pts_XmountInputHandle p_h,
+                                         uint64_t image_nr,
+                                         uint64_t *p_size);
+
+te_XmountInput_Error XmountInput_ReadData(pts_XmountInputHandle p_h,
+                                          uint64_t image_nr,
+                                          char *p_buf,
+                                          uint64_t offset,
+                                          uint64_t count);
+
+te_XmountInput_Error XmountInput_WriteData(pts_XmountInputHandle p_h,
+                                           uint64_t image_nr,
+                                           const char *p_buf,
+                                           uint64_t offset,
+                                           uint64_t count);
+
 #endif // XMOUNT_INPUT_H

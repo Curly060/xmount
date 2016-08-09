@@ -18,7 +18,11 @@
 #include <errno.h>
 
 #include "xmount_input.h"
-#include "xmount.h"
+//#include "xmount.h"
+
+/*******************************************************************************
+ * Private definitions / macros
+ ******************************************************************************/
 
 #define LOG_WARNING(...) {            \
   LIBXMOUNT_LOG_WARNING(__VA_ARGS__); \
@@ -29,6 +33,77 @@
 #define LOG_DEBUG(...) {                              \
   LIBXMOUNT_LOG_DEBUG(glob_xmount.debug,__VA_ARGS__); \
 }
+
+/*******************************************************************************
+ * Private types / structures / enums
+ ******************************************************************************/
+
+//! Structure containing infos about input libs
+typedef struct s_InputLib {
+  //! Filename of lib (without path)
+  char *p_name;
+  //! Handle to the loaded lib
+  void *p_lib;
+  //! Array of supported input types
+  char *p_supported_input_types;
+  //! Struct containing lib functions
+  ts_LibXmountInputFunctions lib_functions;
+} ts_InputLib, *pts_InputLib;
+
+//! Structure containing infos about input images
+typedef struct s_InputImage {
+  //! Image type
+  char *p_type;
+  //! Image source file count
+  uint64_t files_count;
+  //! Image source files
+  char **pp_files;
+  //! Input lib functions for this image
+  pts_LibXmountInputFunctions p_functions;
+  //! Image handle
+  void *p_handle;
+  //! Image size
+  uint64_t size;
+} ts_InputImage, *pts_InputImage;
+
+typedef struct s_XmountInputHandle {
+  //! Loaded input lib count
+  uint32_t libs_count;
+  //! Array containing infos about loaded input libs
+  pts_InputLib *pp_libs;
+  //! Amount of input lib params (--inopts)
+  uint32_t lib_params_count;
+  //! Input lib params (--inopts)
+  pts_LibXmountOptions *pp_lib_params;
+  //! Input image count
+  uint64_t images_count;
+  //! Input images
+  pts_InputImage *pp_images;
+  //! Input image offset (--offset)
+  uint64_t image_offset;
+  //! Input image size limit (--sizelimit)
+  uint64_t image_size_limit;
+
+  // TODO: Move
+  //! MD5 hash of partial input image (lower 64 bit) (after morph)
+  //uint64_t image_hash_lo;
+  //! MD5 hash of partial input image (higher 64 bit) (after morph)
+  //uint64_t image_hash_hi;
+} ts_XmountInputHandle;
+
+/*******************************************************************************
+ * Private functions declarations
+ ******************************************************************************/
+
+
+/*******************************************************************************
+ * Public functions implementations
+ ******************************************************************************/
+
+
+/*******************************************************************************
+ * Private functions implementations
+ ******************************************************************************/
 
 //! Read data from input image
 /*!

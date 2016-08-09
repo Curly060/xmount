@@ -57,7 +57,7 @@ typedef struct s_XmountData {
   //! Parsed xmount arguments
   ts_XmountArgs args;
   //! Input image related data
-  ts_InputData input;
+  pts_XmountInputHandle h_input;
   //! Morphing related data
   ts_MorphingData morphing;
   //! Cache file handle

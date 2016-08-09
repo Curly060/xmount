@@ -137,8 +137,9 @@ static void PrintUsage(char *p_prog_name) {
 
   // List supported input formats
   first=1;
-  for(uint32_t i=0;i<glob_xmount.input.libs_count;i++) {
-    p_buf=glob_xmount.input.pp_libs[i]->p_supported_input_types;
+  if(XmountInput_GetSupportedFormats(glob_xmount.h_input,
+                                     &p_buf)==e_XmountInput_Error_None)
+  {
     while(*p_buf!='\0') {
       if(first==1) {
         printf("\"%s\"",p_buf);
@@ -146,6 +147,7 @@ static void PrintUsage(char *p_prog_name) {
       } else printf(", \"%s\"",p_buf);
       p_buf+=(strlen(p_buf)+1);
     }
+    free(p_buf);
   }
   printf(".\n");
 
@@ -221,7 +223,7 @@ static void PrintUsage(char *p_prog_name) {
   printf("  * For VMDK emulation, you have to uncomment \"user_allow_other\" "
            "in /etc/fuse.conf or run xmount as root.\n");
   printf("\n");
-  printf("Input / Morphing library specific options:\n");
+  printf("Input / Morphing / Output library specific options:\n");
   printf("  Input / Morphing libraries might support an own set of "
            "options to configure / tune their behaviour.\n");
   printf("  Libraries supporting this feature (if any) and their "
@@ -229,26 +231,11 @@ static void PrintUsage(char *p_prog_name) {
   printf("\n");
 
   // List input, morphing and output lib options
-  for(uint32_t i=0;i<glob_xmount.input.libs_count;i++) {
-    ret=glob_xmount.input.pp_libs[i]->
-          lib_functions.OptionsHelp((const char**)&p_buf);
-    if(ret!=0) {
-      LOG_ERROR("Unable to get options help for library '%s': %s!\n",
-                glob_xmount.input.pp_libs[i]->p_name,
-                glob_xmount.input.pp_libs[i]->
-                  lib_functions.GetErrorMessage(ret));
-    }
-    if(p_buf==NULL) continue;
-    printf("  - %s\n",glob_xmount.input.pp_libs[i]->p_name);
+  if(XmountInput_GetOptionsHelpText(glob_xmount.h_input,
+                                    &p_buf)==e_XmountInput_Error_None)
+  {
     printf("%s",p_buf);
-    printf("\n");
-    ret=glob_xmount.input.pp_libs[i]->lib_functions.FreeBuffer(p_buf);
-    if(ret!=0) {
-      LOG_ERROR("Unable to free options help text from library '%s': %s!\n",
-                glob_xmount.input.pp_libs[i]->p_name,
-                glob_xmount.input.pp_libs[i]->
-                  lib_functions.GetErrorMessage(ret));
-    }
+    free(p_buf);
   }
   for(uint32_t i=0;i<glob_xmount.morphing.libs_count;i++) {
     ret=glob_xmount.morphing.pp_libs[i]->
@@ -384,7 +371,6 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
   int FuseAllowOther=TRUE;
   int first;
   char *p_buf;
-  pts_InputImage p_input_image=NULL;
   int ret;
 
   // add pp_argv[0] to FUSE's argv
@@ -468,7 +454,7 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
         LOG_DEBUG("Enabling virtual write support using cache file \"%s\"\n",
                   glob_xmount.args.p_cache_file)
       } else if(strcmp(pp_argv[i],"--in")==0) {
-        // Specify input image type and source files
+        // Input image format and source files
         if((i+2)<argc) {
           i++;
           // Alloc and init new ts_InputImage struct

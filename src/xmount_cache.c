@@ -15,8 +15,8 @@
 * this program. If not, see <http://www.gnu.org/licenses/>.                    *
 *******************************************************************************/
 
-#include <stdlib.h>
-#include <string.h>
+#include <stdlib.h> // For calloc
+#include <string.h> // For memcpy
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>

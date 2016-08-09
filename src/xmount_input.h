@@ -20,6 +20,7 @@
 
 #include "../libxmount_input/libxmount_input.h"
 
+/*
 //! Structure containing infos about input libs
 typedef struct s_InputLib {
   //! Filename of lib (without path)
@@ -72,10 +73,7 @@ typedef struct s_InputData {
 } ts_InputData;
 
 int ReadInputImageData(pts_InputImage, char*, off_t, size_t, size_t*);
-
-
-
-
+*/
 
 /*******************************************************************************
  * Public definitions / macros
@@ -96,10 +94,10 @@ typedef enum e_XmountInput_Error {
   e_XmountInput_Error_InvalidHandle,
   //! Invalid pointer to an input handle
   e_XmountInput_Error_InvalidHandlePointer,
-
-/*
   //! A given string is invalid
-  e_XmountCache_Error_InvalidString,
+  e_XmountInput_Error_InvalidBuffer,
+/*
+
   //! A given file path / name is invalid
   e_XmountCache_Error_InvalidFile,
   //! A given file does not exist
@@ -169,7 +167,36 @@ te_XmountInput_Error XmountInput_DestroyHandle(pts_XmountInputHandle *pp_h);
  *
  * \param p_h Input handle
  */
-te_XmountInput_Error XmountInput_LoadLib(pts_XmountInputHandle p_h);
+te_XmountInput_Error XmountInput_LoadLibs(pts_XmountInputHandle p_h);
+
+/*!
+ * \brief Return all supported formats
+ *
+ * Returns a null-terminated vector of all supported input formats.
+ *
+ * The returned vector must be freed by the caller.
+ *
+ * \param p_h Input handle
+ * \param pp_formats Supported formats vector is returned in this var
+ * \return e_XmountInput_Error_None on success
+ */
+te_XmountInput_Error XmountInput_GetSupportedFormats(pts_XmountInputHandle p_h,
+                                                     char **pp_formats);
+
+/*!
+ * \brief Return all library specific option help texts
+ *
+ * Returns a string containing help messages for all loaded input lib options.
+ * The string is pre-formated to be used in xmount's help output.
+ *
+ * The caller must free the returned string.
+ *
+ * \param p_h Input handle
+ * \param pp_help_text Help text is returned in this parameter
+ * \return e_XmountInput_Error_None on success
+ */
+te_XmountInput_Error XmountInput_GetOptionsHelpText(pts_XmountInputHandle p_h,
+                                                    char **pp_help_text);
 
 /*!
  * \brief Add an input image

@@ -21,6 +21,7 @@
 
 #include "xmount_input.h"
 #include "xmount.h"
+#include "macros.h"
 
 /*******************************************************************************
  * Private definitions / macros
@@ -251,7 +252,30 @@ te_XmountInput_Error XmountInput_AddImage(pts_XmountInputHandle p_h,
                                           uint64_t files_count,
                                           const char **pp_files)
 {
-  // TODO: Implement
+  pts_XmountInputImage p_image=NULL;
+
+  // Params check
+  if(p_h==NULL) return e_XmountInput_Error_InvalidHandle;
+  if(p_format==NULL) return e_XmountInput_Error_InvalidString;
+  if(pp_files==NULL) return e_XmountInput_Error_InvalidArray;
+
+  // Alloc and fill new image structure
+  XMOUNT_CALLOC(p_image,pts_XmountInputImage,sizeof(ts_XmountInputImage));
+  XMOUNT_STRSET(p_image->p_type,p_format);
+  p_image->files_count=files_count;
+  XMOUNT_CALLOC(p_image->pp_files,char**,p_image->files_count*sizeof(char*));
+  for(uint64_t i=0;i<p_image->files_count;i++) {
+    XMOUNT_STRSET(p_image->pp_files[i],pp_files[i]);
+  }
+  p_image->p_functions=NULL;
+  p_image->p_handle=NULL;
+
+  // TODO: Find lib and open input file
+
+  // Add image to our image array
+  XMOUNT_REALLOC(p_h->pp_images,pts_XmountInputImage*,p_h->images_count+1);
+  p_h->pp_images[p_h->images_count++]=p_image;
+
   return e_XmountInput_Error_None;
 }
 

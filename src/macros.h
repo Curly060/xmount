@@ -35,6 +35,13 @@
     exit(1); \
   } \
 }
+#define XMOUNT_CALLOC(var,var_type,size) { \
+  (var)=(var_type)calloc(1,size); \
+  if((var)==NULL) { \
+    LOG_ERROR("Couldn't allocate memmory!\n"); \
+    exit(1); \
+  } \
+}
 #define XMOUNT_REALLOC(var,var_type,size) { \
   (var)=(var_type)realloc((var),size); \
   if((var)==NULL) { \

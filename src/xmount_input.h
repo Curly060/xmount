@@ -94,8 +94,12 @@ typedef enum e_XmountInput_Error {
   e_XmountInput_Error_InvalidHandle,
   //! Invalid pointer to an input handle
   e_XmountInput_Error_InvalidHandlePointer,
-  //! A given string is invalid
+  //! A given buffer is invalid
   e_XmountInput_Error_InvalidBuffer,
+  //! A given string is invalid
+  e_XmountInput_Error_InvalidString,
+  //! A given array is invalid
+  e_XmountInput_Error_InvalidArray,
 /*
 
   //! A given file path / name is invalid

@@ -370,8 +370,11 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
   int FuseMinusOControl=TRUE;
   int FuseAllowOther=TRUE;
   int first;
+  uint64_t buf;
   char *p_buf;
+  char **pp_buf;
   int ret;
+  te_XmountInput_Error input_ret=e_XmountInput_Error_None;
 
   // add pp_argv[0] to FUSE's argv
   XMOUNT_MALLOC(glob_xmount.pp_fuse_argv,char**,sizeof(char*));
@@ -457,42 +460,36 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
         // Input image format and source files
         if((i+2)<argc) {
           i++;
-          // Alloc and init new ts_InputImage struct
-          XMOUNT_MALLOC(p_input_image,pts_InputImage,sizeof(ts_InputImage));
-          XMOUNT_STRSET(p_input_image->p_type,pp_argv[i]);
-          p_input_image->pp_files=NULL;
-          p_input_image->p_functions=NULL;
-          p_input_image->p_handle=NULL;
-          // Parse input image filename(s) and add to p_input_image->pp_files
+          // Save format
+          p_buf=pp_argv[i];
+          // Parse input image filename(s) and save to temporary array
           i++;
-          p_input_image->files_count=0;
+          buf=0;
+          pp_buf=NULL;
           while(i<(argc-1) && strncmp(pp_argv[i],"--",2)!=0) {
-            p_input_image->files_count++;
-            XMOUNT_REALLOC(p_input_image->pp_files,
-                           char**,
-                           p_input_image->files_count*sizeof(char*));
-            XMOUNT_STRSET(p_input_image->pp_files[p_input_image->files_count-1],
-                          pp_argv[i]);
+            buf++;
+            XMOUNT_REALLOC(pp_buf,char**,buf*sizeof(char*));
+            pp_buf[buf-1]=pp_argv[i];
             i++;
           }
           i--;
-          if(p_input_image->files_count==0) {
-            LOG_ERROR("No input files specified for \"--in %s\"!\n",
-                      p_input_image->p_type)
-            free(p_input_image->p_type);
-            free(p_input_image);
+          if(buf==0) {
+            LOG_ERROR("No input files specified for \"--in %s\"!\n",p_buf);
             return FALSE;
           }
-          // Add input image struct to input image array
-          glob_xmount.input.images_count++;
-          XMOUNT_REALLOC(glob_xmount.input.pp_images,
-                         pts_InputImage*,
-                         glob_xmount.input.images_count*
-                           sizeof(pts_InputImage));
-          glob_xmount.input.pp_images[glob_xmount.input.images_count-1]=
-            p_input_image;
+          // Add input image
+          if((input_ret=XmountInput_AddImage(glob_xmount.h_input,
+                                             p_buf,
+                                             buf,
+                                             (const char**)pp_buf)
+             )!=e_XmountInput_Error_None)
+          {
+            LOG_ERROR("Unable to load input image: Error code %u!\n",input_ret);
+            XMOUNT_FREE(pp_buf);
+            return FALSE;
+          }
         } else {
-          LOG_ERROR("You must specify an input image type and source file!\n");
+          LOG_ERROR("You must specify an input image format and source file!\n");
           return FALSE;
         }
       } else if(strcmp(pp_argv[i],"--inopts")==0) {

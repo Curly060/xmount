@@ -488,6 +488,11 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
             XMOUNT_FREE(pp_buf);
             return FALSE;
           }
+          // Save first image path to generate fsname later on
+          if(glob_xmount.p_first_input_image_name==NULL) {
+            XMOUNT_STRSET(glob_xmount.p_first_input_image_name,
+                          pp_buf[0]);
+          }
         } else {
           LOG_ERROR("You must specify an input image format and source file!\n");
           return FALSE;
@@ -639,19 +644,14 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
         printf("  gcc version: %s\n",__VERSION__);
 #endif
         printf("  loaded input libraries:\n");
-        for(uint32_t ii=0;ii<glob_xmount.input.libs_count;ii++) {
-          printf("    - %s supporting ",glob_xmount.input.pp_libs[ii]->p_name);
-          p_buf=glob_xmount.input.pp_libs[ii]->p_supported_input_types;
-          first=TRUE;
-          while(*p_buf!='\0') {
-            if(first) {
-              printf("\"%s\"",p_buf);
-              first=FALSE;
-            } else printf(", \"%s\"",p_buf);
-            p_buf+=(strlen(p_buf)+1);
-          }
-          printf("\n");
+        input_ret=XmountInput_GetLibsInfoText(glob_xmount.h_input,&p_buf);
+        if(p_buf==NULL || input_ret!=e_XmountInput_Error_None) {
+          LOG_ERROR("Unable to get input library infos: Error code %u!\n",
+                    input_ret);
+          return FALSE;
         }
+        printf("%s",p_buf);
+        XMOUNT_FREE(p_buf);
         printf("  loaded morphing libraries:\n");
         for(uint32_t ii=0;ii<glob_xmount.morphing.libs_count;ii++) {
           printf("    - %s supporting ",
@@ -715,14 +715,14 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
     XMOUNT_STRSET(glob_xmount.pp_fuse_argv[glob_xmount.fuse_argc-2],"-o");
     XMOUNT_STRSET(glob_xmount.pp_fuse_argv[glob_xmount.fuse_argc-1],
                   "subtype=xmount");
-    if(glob_xmount.input.images_count!=0) {
+    if(glob_xmount.p_first_input_image_name!=NULL) {
       // Set name of first source file as fsname
       XMOUNT_STRAPP(glob_xmount.pp_fuse_argv[glob_xmount.fuse_argc-1],
                     ",fsname='");
       // If possible, use full path
-      p_buf=realpath(glob_xmount.input.pp_images[0]->pp_files[0],NULL);
+      p_buf=realpath(glob_xmount.p_first_input_image_name,NULL);
       if(p_buf==NULL) {
-        XMOUNT_STRSET(p_buf,glob_xmount.input.pp_images[0]->pp_files[0]);
+        XMOUNT_STRSET(p_buf,glob_xmount.p_first_input_image_name);
       }
       // Make sure fsname does not include some forbidden chars
       for(uint32_t i=0;i<strlen(p_buf);i++) {
@@ -832,6 +832,7 @@ static int CalculateInputImageHash(uint64_t *p_hash_low,
  */
 static int InitInfoFile() {
   int ret;
+  te_XmountInput_Error input_ret=e_XmountInput_Error_None;
   char *p_buf;
 
   // Start with static input header
@@ -843,28 +844,15 @@ static int InitInfoFile() {
           strlen(IMAGE_INFO_INPUT_HEADER)+1);
 
   // Get and add infos from input lib(s)
-  for(uint64_t i=0;i<glob_xmount.input.images_count;i++) {
-    ret=glob_xmount.input.pp_images[i]->p_functions->
-          GetInfofileContent(glob_xmount.input.pp_images[i]->p_handle,(const char**)&p_buf);
-    if(ret!=0) {
-      LOG_ERROR("Unable to get info file content for image '%s': %s!\n",
-                glob_xmount.input.pp_images[i]->pp_files[0],
-                glob_xmount.input.pp_images[i]->p_functions->
-                  GetErrorMessage(ret));
-      return FALSE;
-    }
-    // Add infos to main buffer and free p_buf
-    XMOUNT_STRAPP(glob_xmount.output.p_info_file,"\n--> ");
-    XMOUNT_STRAPP(glob_xmount.output.p_info_file,
-                  glob_xmount.input.pp_images[i]->pp_files[0]);
-    XMOUNT_STRAPP(glob_xmount.output.p_info_file," <--\n");
-    if(p_buf!=NULL) {
-      XMOUNT_STRAPP(glob_xmount.output.p_info_file,p_buf);
-      glob_xmount.input.pp_images[i]->p_functions->FreeBuffer(p_buf);
-    } else {
-      XMOUNT_STRAPP(glob_xmount.output.p_info_file,"None\n");
-    }
+  input_ret=XmountInput_GetInfoFileContent(glob_xmount.h_cache,&p_buf);
+  if(p_buf==NULL || input_ret!=e_XmountInput_Error_None) {
+    LOG_ERROR("Unable to get info file content for input image(s): "
+                "Error code %u!\n",
+              input_ret);
+    return FALSE;
   }
+  XMOUNT_STRAPP(glob_xmount.output.p_info_file,p_buf);
+  XMOUNT_FREE(p_buf);
 
   // Add static morphing header
   XMOUNT_STRAPP(glob_xmount.output.p_info_file,IMAGE_INFO_MORPHING_HEADER);
@@ -897,9 +885,6 @@ static int LoadLibs() {
   int base_library_path_len=0;
   char *p_library_path=NULL;
   void *p_libxmount=NULL;
-  t_LibXmount_Input_GetApiVersion pfun_input_GetApiVersion;
-  t_LibXmount_Input_GetSupportedFormats pfun_input_GetSupportedFormats;
-  t_LibXmount_Input_GetFunctions pfun_input_GetFunctions;
   t_LibXmount_Morphing_GetApiVersion pfun_morphing_GetApiVersion;
   t_LibXmount_Morphing_GetSupportedTypes pfun_morphing_GetSupportedTypes;
   t_LibXmount_Morphing_GetFunctions pfun_morphing_GetFunctions;
@@ -909,9 +894,10 @@ static int LoadLibs() {
   const char *p_supported_formats=NULL;
   const char *p_buf;
   uint32_t supported_formats_len=0;
-  pts_InputLib p_input_lib=NULL;
+  uint32_t input_lib_count=0;
   pts_MorphingLib p_morphing_lib=NULL;
   pts_OutputLib p_output_lib=NULL;
+  te_XmountInput_Error input_ret=e_XmountInput_Error_None;
 
   LOG_DEBUG("Searching for xmount libraries in '%s'.\n",
             XMOUNT_LIBRARY_PATH);
@@ -965,85 +951,18 @@ static int LoadLibs() {
     }
     strcpy(p_library_path+base_library_path_len,p_dirent->d_name);
 
-    if(strncmp(p_dirent->d_name,"libxmount_input_",16)==0) {
+    if(strncmp(p_dirent->d_name,
+               XMOUNT_INPUT_LIBRARY_NAMING_SCHEME,
+               strlen(XMOUNT_INPUT_LIBRARY_NAMING_SCHEME))==0)
+    {
       // Found possible input lib. Try to load it
-      LIBXMOUNT_LOAD(p_library_path);
-
-      // Load library symbols
-      LIBXMOUNT_LOAD_SYMBOL("LibXmount_Input_GetApiVersion",
-                            pfun_input_GetApiVersion);
-
-      // Check library's API version
-      if(pfun_input_GetApiVersion()!=LIBXMOUNT_INPUT_API_VERSION) {
-        LOG_DEBUG("Failed! Wrong API version.\n");
-        LOG_ERROR("Unable to load input library '%s'. Wrong API version\n",
-                  p_library_path);
-        dlclose(p_libxmount);
+      input_ret=XmountInput_AddLibrary(glob_xmount.h_input,p_dirent->d_name);
+      if(input_ret!=e_XmountInput_Error_None) {
+        LOG_ERROR("Unable to add input library '%s': Error code %u!\n",
+                  p_dirent->d_name,
+                  input_ret);
         continue;
       }
-
-      LIBXMOUNT_LOAD_SYMBOL("LibXmount_Input_GetSupportedFormats",
-                            pfun_input_GetSupportedFormats);
-      LIBXMOUNT_LOAD_SYMBOL("LibXmount_Input_GetFunctions",
-                            pfun_input_GetFunctions);
-
-      // Construct new entry for our library list
-      XMOUNT_MALLOC(p_input_lib,pts_InputLib,sizeof(ts_InputLib));
-      // Initialize lib_functions structure to NULL
-      memset(&(p_input_lib->lib_functions),
-             0,
-             sizeof(ts_LibXmountInputFunctions));
-
-      // Set name and handle
-      XMOUNT_STRSET(p_input_lib->p_name,p_dirent->d_name);
-      p_input_lib->p_lib=p_libxmount;
-
-      // Get and set supported formats
-      p_supported_formats=pfun_input_GetSupportedFormats();
-      supported_formats_len=0;
-      p_buf=p_supported_formats;
-      while(*p_buf!='\0') {
-        supported_formats_len+=(strlen(p_buf)+1);
-        p_buf+=(strlen(p_buf)+1);
-      }
-      supported_formats_len++;
-      XMOUNT_MALLOC(p_input_lib->p_supported_input_types,
-                    char*,
-                    supported_formats_len);
-      memcpy(p_input_lib->p_supported_input_types,
-             p_supported_formats,
-             supported_formats_len);
-
-      // Get, set and check lib_functions
-      pfun_input_GetFunctions(&(p_input_lib->lib_functions));
-      if(p_input_lib->lib_functions.CreateHandle==NULL ||
-         p_input_lib->lib_functions.DestroyHandle==NULL ||
-         p_input_lib->lib_functions.Open==NULL ||
-         p_input_lib->lib_functions.Close==NULL ||
-         p_input_lib->lib_functions.Size==NULL ||
-         p_input_lib->lib_functions.Read==NULL ||
-         p_input_lib->lib_functions.OptionsHelp==NULL ||
-         p_input_lib->lib_functions.OptionsParse==NULL ||
-         p_input_lib->lib_functions.GetInfofileContent==NULL ||
-         p_input_lib->lib_functions.GetErrorMessage==NULL ||
-         p_input_lib->lib_functions.FreeBuffer==NULL)
-      {
-        LOG_DEBUG("Missing implemention of one or more functions in lib %s!\n",
-                  p_dirent->d_name);
-        free(p_input_lib->p_supported_input_types);
-        free(p_input_lib->p_name);
-        free(p_input_lib);
-        dlclose(p_libxmount);
-        continue;
-      }
-
-      // Add entry to the input library list
-      XMOUNT_REALLOC(glob_xmount.input.pp_libs,
-                     pts_InputLib*,
-                     sizeof(pts_InputLib)*(glob_xmount.input.libs_count+1));
-      glob_xmount.input.pp_libs[glob_xmount.input.libs_count++]=p_input_lib;
-
-      LOG_DEBUG("Input library '%s' loaded successfully\n",p_dirent->d_name);
     } if(strncmp(p_dirent->d_name,"libxmount_morphing_",19)==0) {
       // Found possible morphing lib. Try to load it
       LIBXMOUNT_LOAD(p_library_path);
@@ -1214,52 +1133,24 @@ static int LoadLibs() {
 #undef LIBXMOUNT_LOAD_SYMBOL
 #undef LIBXMOUNT_LOAD
 
+  // Get loaded library counts
+  input_ret=XmountInput_GetLibraryCount(glob_xmount.h_input,&input_lib_count);
+  if(input_ret!=e_XmountInput_Error_None) {
+    LOG_ERROR("Unable to get input library count: Error code %u!\n",input_ret);
+    return FALSE;
+  }
+
   LOG_DEBUG("A total of %u input libs, %u morphing libs and %u output libs "
               "were loaded.\n",
-            glob_xmount.input.libs_count,
+            input_lib_count,
             glob_xmount.morphing.libs_count,
             glob_xmount.output.libs_count);
 
   free(p_library_path);
   closedir(p_dir);
-  return ((glob_xmount.input.libs_count>0 &&
+  return ((input_lib_count>0 &&
            glob_xmount.morphing.libs_count>0 &&
            glob_xmount.output.libs_count>0) ? TRUE : FALSE);
-}
-
-//! Search an appropriate input lib for specified input type
-/*!
- * \param p_input_image Input image to search input lib for
- * \return TRUE on success, FALSE on error
- */
-static int FindInputLib(pts_InputImage p_input_image) {
-  char *p_buf;
-
-  LOG_DEBUG("Trying to find suitable library for input type '%s'.\n",
-            p_input_image->p_type);
-
-  // Loop over all loaded libs
-  for(uint32_t i=0;i<glob_xmount.input.libs_count;i++) {
-    LOG_DEBUG("Checking input library %s\n",
-              glob_xmount.input.pp_libs[i]->p_name);
-    p_buf=glob_xmount.input.pp_libs[i]->p_supported_input_types;
-    while(*p_buf!='\0') {
-      if(strcmp(p_buf,p_input_image->p_type)==0) {
-        // Library supports input type, set lib functions
-        LOG_DEBUG("Input library '%s' pretends to handle that input type.\n",
-                  glob_xmount.input.pp_libs[i]->p_name);
-        p_input_image->p_functions=
-          &(glob_xmount.input.pp_libs[i]->lib_functions);
-        return TRUE;
-      }
-      p_buf+=(strlen(p_buf)+1);
-    }
-  }
-
-  LOG_DEBUG("Couldn't find any suitable library.\n");
-
-  // No library supporting input type found
-  return FALSE;
 }
 
 //! Search an appropriate morphing lib for the specified morph type
@@ -1336,16 +1227,7 @@ static void InitResources() {
   glob_xmount.args.p_cache_file=NULL;
 
   // Input
-  glob_xmount.input.libs_count=0;
-  glob_xmount.input.pp_libs=NULL;
-  glob_xmount.input.lib_params_count=0;
-  glob_xmount.input.pp_lib_params=NULL;
-  glob_xmount.input.images_count=0;
-  glob_xmount.input.pp_images=NULL;
-  glob_xmount.input.image_offset=0;
-  glob_xmount.input.image_size_limit=0;
-  glob_xmount.input.image_hash_lo=0;
-  glob_xmount.input.image_hash_hi=0;
+  glob_xmount.h_input=NULL;
 
   // Morphing
   glob_xmount.morphing.libs_count=0;
@@ -1386,6 +1268,10 @@ static void InitResources() {
   glob_xmount.fuse_argc=0;
   glob_xmount.pp_fuse_argv=NULL;
   glob_xmount.p_mountpoint=NULL;
+  glob_xmount.p_first_input_image_name=NULL;
+  // TODO: Move where needed
+  //glob_xmount.image_hash_lo=0;
+  //glob_xmount.image_hash_hi=0;
 }
 
 /*
@@ -1398,6 +1284,9 @@ static void FreeResources() {
   LOG_DEBUG("Freeing all resources\n");
 
   // Misc
+  if(glob_xmount.p_first_input_image_name!=NULL) {
+    XMOUNT_FREE(glob_xmount.p_first_input_image_name);
+  }
   if(glob_xmount.pp_fuse_argv!=NULL) {
     for(int i=0;i<glob_xmount.fuse_argc;i++) free(glob_xmount.pp_fuse_argv[i]);
     free(glob_xmount.pp_fuse_argv);

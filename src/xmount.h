@@ -74,6 +74,8 @@ typedef struct s_XmountData {
   char **pp_fuse_argv;
   //! Mount point
   char *p_mountpoint;
+  //! First input image's path/name
+  char *p_first_input_image_name;
   //! Mutex to control concurrent read & write access on output image
   pthread_mutex_t mutex_image_rw;
   //! Mutex to control concurrent read access on info file

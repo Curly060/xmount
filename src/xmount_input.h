@@ -18,67 +18,13 @@
 #ifndef XMOUNT_INPUT_H
 #define XMOUNT_INPUT_H
 
-#include "../libxmount_input/libxmount_input.h"
-
-/*
-//! Structure containing infos about input libs
-typedef struct s_InputLib {
-  //! Filename of lib (without path)
-  char *p_name;
-  //! Handle to the loaded lib
-  void *p_lib;
-  //! Array of supported input types
-  char *p_supported_input_types;
-  //! Struct containing lib functions
-  ts_LibXmountInputFunctions lib_functions;
-} ts_InputLib, *pts_InputLib;
-
-//! Structure containing infos about input images
-typedef struct s_InputImage {
-  //! Image type
-  char *p_type;
-  //! Image source file count
-  uint64_t files_count;
-  //! Image source files
-  char **pp_files;
-  //! Input lib functions for this image
-  pts_LibXmountInputFunctions p_functions;
-  //! Image handle
-  void *p_handle;
-  //! Image size
-  uint64_t size;
-} ts_InputImage, *pts_InputImage;
-
-typedef struct s_InputData {
-  //! Loaded input lib count
-  uint32_t libs_count;
-  //! Array containing infos about loaded input libs
-  pts_InputLib *pp_libs;
-  //! Amount of input lib params (--inopts)
-  uint32_t lib_params_count;
-  //! Input lib params (--inopts)
-  pts_LibXmountOptions *pp_lib_params;
-  //! Input image count
-  uint64_t images_count;
-  //! Input images
-  pts_InputImage *pp_images;
-  //! Input image offset (--offset)
-  uint64_t image_offset;
-  //! Input image size limit (--sizelimit)
-  uint64_t image_size_limit;
-  //! MD5 hash of partial input image (lower 64 bit) (after morph)
-  uint64_t image_hash_lo;
-  //! MD5 hash of partial input image (higher 64 bit) (after morph)
-  uint64_t image_hash_hi;
-} ts_InputData;
-
-int ReadInputImageData(pts_InputImage, char*, off_t, size_t, size_t*);
-*/
+#include <stdint.h>
 
 /*******************************************************************************
  * Public definitions / macros
  ******************************************************************************/
-
+//! Naming scheme of input libraries
+#define XMOUNT_INPUT_LIBRARY_NAMING_SCHEME "libxmount_input_"
 
 /*******************************************************************************
  * Public types / structures / enums
@@ -104,6 +50,16 @@ typedef enum e_XmountInput_Error {
   e_XmountInput_Error_LibOptionsAlreadySet,
   //! Library options couldn't be parsed
   e_XmountInput_Error_FailedParsingOptions,
+  //! Unable to get info file content from library
+  e_XmountInput_Error_FailedGettingInfoFileContent,
+  //! Unable to load library file
+  e_XmountInput_Error_FailedLoadingLibrary,
+  //! Library has wrong API version
+  e_XmountInput_Error_WrongLibraryApiVersion,
+  //! Library is missing a function
+  e_XmountInput_Error_MissingLibraryFunction,
+  //! Unsupported input image format
+  e_XmountInput_Error_UnsupportedFormat,
 /*
 
   //! A given file path / name is invalid
@@ -169,13 +125,28 @@ te_XmountInput_Error XmountInput_CreateHandle(pts_XmountInputHandle *pp_h);
 te_XmountInput_Error XmountInput_DestroyHandle(pts_XmountInputHandle *pp_h);
 
 /*!
- * \brief XXX
+ * \brief Load an input library
  *
- * XXX
+ * Loads a given input library.
  *
  * \param p_h Input handle
+ * \param p_lib Library name (without path)
+ * \return e_XmountInput_Error_None on success
  */
-te_XmountInput_Error XmountInput_LoadLibs(pts_XmountInputHandle p_h);
+te_XmountInput_Error XmountInput_AddLibrary(pts_XmountInputHandle p_h,
+                                            const char *p_lib_name);
+
+/*!
+ * \brief Get loaded input library count
+ *
+ * Returns the number of successfully loaded input libraries.
+ *
+ * \param p_h Input handle
+ * \param p_count Library count is returned in this variable
+ * \return e_XmountInput_Error_None on success
+ */
+te_XmountInput_Error XmountInput_GetLibraryCount(pts_XmountInputHandle p_h,
+                                                 uint32_t *p_count);
 
 /*!
  * \brief Return all supported formats
@@ -219,10 +190,16 @@ te_XmountInput_Error XmountInput_GetOptionsHelpText(pts_XmountInputHandle p_h,
                                                     char **pp_help_text);
 
 /*!
- * \brief Generate a text containing infos about loaded libs
+ * \brief Returns a string containing infos about loaded libs
  *
- * TODO
+ * Returns a string containing infos about loaded input libraries. The string is
+ * pre-formated to be used in xmount's info output.
  *
+ * The caller must free the returned string.
+ *
+ * \param p_h Input handle
+ * \param pp_info_text Info text is returned in this parameter
+ * \return e_XmountInput_Error_None on success
  */
 te_XmountInput_Error XmountInput_GetLibsInfoText(pts_XmountInputHandle p_h,
                                                  char **pp_info_text);
@@ -243,11 +220,63 @@ te_XmountInput_Error XmountInput_AddImage(pts_XmountInputHandle p_h,
                                           uint64_t files_count,
                                           const char **pp_files);
 
+/*!
+ * \brief Get input image count
+ *
+ * Get input image count.
+ *
+ * \param p_h Input handle
+ * \param p_count Input image count is returned in this variable
+ * \return e_XmountInput_Error_None on success
+ */
+te_XmountInput_Error XmountInput_GetImageCount(pts_XmountInputHandle p_h,
+                                               uint64_t *p_count);
+
+/*!
+ * \brief Set an input image offset
+ *
+ * Sets the amount of bytes that should be ignored at the beginning of every
+ * input image.
+ *
+ * \param p_h Input handle
+ * \param offset Amount of bytes to ignore
+ * \return e_XmountInput_Error_None on success
+ */
 te_XmountInput_Error XmountInput_SetInputOffset(pts_XmountInputHandle p_h,
                                                 uint64_t offset);
 
+/*!
+ * \brief Set an input image size limit
+ *
+ * Sets the amount of bytes that should be ignored at the end of every
+ * input image.
+ *
+ * \param p_h Input handle
+ * \param size_limit Amount of bytes to ignore
+ * \return e_XmountInput_Error_None on success
+ */
 te_XmountInput_Error XmountInput_SetInputSizeLimit(pts_XmountInputHandle p_h,
                                                    uint64_t size_limit);
+
+/*!
+ * \brief Opens all added input images
+ *
+ * Opens all added input images.
+ *
+ * \param p_h Input handle
+ * \return e_XmountInput_Error_None on success
+ */
+te_XmountInput_Error XmountInput_Open(pts_XmountInputHandle p_h);
+
+/*!
+ * \brief Closes all previously opened input images
+ *
+ * Closes all previously opened input images.
+ *
+ * \param p_h Input handle
+ * \return e_XmountInput_Error_None on success
+ */
+te_XmountInput_Error XmountInput_Close(pts_XmountInputHandle p_h);
 
 te_XmountInput_Error XmountInput_GetSize(pts_XmountInputHandle p_h,
                                          uint64_t image_nr,
@@ -264,5 +293,20 @@ te_XmountInput_Error XmountInput_WriteData(pts_XmountInputHandle p_h,
                                            const char *p_buf,
                                            uint64_t offset,
                                            uint64_t count);
+
+/*!
+ * \brief Get info text to be added to xmount's info file
+ *
+ * Generates a string containing informations about currently opened input
+ * images.
+ *
+ * The caller must free the returned string.
+ *
+ * \param p_h Input handle
+ * \param pp_content Buffer in which text is returned
+ * \return e_XmountInput_Error_None on success
+ */
+te_XmountInput_Error XmountInput_GetInfoFileContent(pts_XmountInputHandle p_h,
+                                                    char **pp_content);
 
 #endif // XMOUNT_INPUT_H

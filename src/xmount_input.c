@@ -17,11 +17,13 @@
 
 #include <stdlib.h> // For calloc
 #include <string.h> // For memcpy
-#include <errno.h>
+//#include <errno.h>
+#include <dlfcn.h> // For dlopen, dlclose, dlsym
 
 #include "xmount_input.h"
 #include "xmount.h"
 #include "macros.h"
+#include "../libxmount_input/libxmount_input.h"
 
 /*******************************************************************************
  * Private definitions / macros
@@ -97,7 +99,19 @@ typedef struct s_XmountInputHandle {
 /*******************************************************************************
  * Private functions declarations
  ******************************************************************************/
-
+/*!
+ * \brief Find an input lib for a given input image
+ *
+ * Searches trough the list of loaded input libraries to find one that supports
+ * the given input image's format. On success, that library is associated with
+ * the given image.
+ *
+ * \param p_h Input handle
+ * \param p_input_image Input image to search input lib for
+ * \return e_XmountInput_Error_None on success
+ */
+te_XmountInput_Error FindInputLib(pts_XmountInputHandle p_h,
+                                  pts_XmountInputImage p_input_image);
 
 /*******************************************************************************
  * Public functions implementations
@@ -156,10 +170,140 @@ te_XmountInput_Error XmountInput_DestroyHandle(pts_XmountInputHandle *pp_h) {
 }
 
 /*
- * XmountInput_LoadLibs
+ * XmountInput_AddLibrary
  */
-te_XmountInput_Error XmountInput_LoadLibs(pts_XmountInputHandle p_h) {
-  // TODO: Implement
+te_XmountInput_Error XmountInput_AddLibrary(pts_XmountInputHandle p_h,
+                                            const char *p_lib_name)
+{
+  uint32_t supported_formats_len=0;
+  t_LibXmount_Input_GetApiVersion pfun_input_GetApiVersion;
+  t_LibXmount_Input_GetSupportedFormats pfun_input_GetSupportedFormats;
+  t_LibXmount_Input_GetFunctions pfun_input_GetFunctions;
+  void *p_libxmount=NULL;
+  pts_XmountInputLib p_input_lib=NULL;
+  char *p_buf=NULL;
+  char *p_library_path=NULL;
+  char *p_supported_formats=NULL;
+
+  // Params check
+  if(p_h==NULL) return e_XmountInput_Error_InvalidHandle;
+  if(p_lib_name==NULL) return e_XmountInput_Error_InvalidString;
+
+  // Construct full library path
+  XMOUNT_STRSET(p_library_path,XMOUNT_LIBRARY_PATH);
+  if(p_library_path[strlen(p_library_path)]!='/') {
+    XMOUNT_STRAPP(p_library_path,"/");
+  }
+  XMOUNT_STRAPP(p_library_path,p_lib_name);
+
+#define XMOUNTINPUT_LOADLIBS__LOAD_SYMBOL(name,pfun) {           \
+  if((pfun=dlsym(p_libxmount,name))==NULL) {                     \
+    LOG_ERROR("Unable to load symbol '%s' from library '%s'!\n", \
+              name,                                              \
+              p_library_path);                                   \
+    dlclose(p_libxmount);                                        \
+    p_libxmount=NULL;                                            \
+    continue;                                                    \
+  }                                                              \
+}
+
+  // Try to load given library
+  p_libxmount=dlopen(p_library_path,RTLD_NOW);
+  if(p_libxmount==NULL) {
+    LOG_ERROR("Unable to load input library '%s': %s!\n",
+              p_library_path,
+              dlerror());
+    return e_XmountInput_Error_FailedLoadingLibrary;
+  }
+
+  // Load library symbols
+  LIBXMOUNT_LOAD_SYMBOL("LibXmount_Input_GetApiVersion",
+                        pfun_input_GetApiVersion);
+
+  // Check library's API version
+  if(pfun_input_GetApiVersion()!=LIBXMOUNT_INPUT_API_VERSION) {
+    LOG_DEBUG("Failed! Wrong API version.\n");
+    LOG_ERROR("Unable to load input library '%s'. Wrong API version\n",
+              p_library_path);
+    dlclose(p_libxmount);
+    return e_XmountInput_Error_WrongLibraryApiVersion;
+  }
+
+  LIBXMOUNT_LOAD_SYMBOL("LibXmount_Input_GetSupportedFormats",
+                        pfun_input_GetSupportedFormats);
+  LIBXMOUNT_LOAD_SYMBOL("LibXmount_Input_GetFunctions",
+                        pfun_input_GetFunctions);
+
+  // Construct new entry for our library list
+  XMOUNT_MALLOC(p_input_lib,pts_XmountInputLib,sizeof(ts_XmountInputLib));
+  // Initialize lib_functions structure to NULL
+  memset(&(p_input_lib->lib_functions),
+         0,
+         sizeof(ts_LibXmountInputFunctions));
+
+  // Set name and handle
+  XMOUNT_STRSET(p_input_lib->p_name,p_lib_name);
+  p_input_lib->p_lib=p_libxmount;
+
+  // Get and set supported formats
+  p_supported_formats=pfun_input_GetSupportedFormats();
+  p_buf=p_supported_formats;
+  while(*p_buf!='\0') {
+    supported_formats_len+=(strlen(p_buf)+1);
+    p_buf+=(strlen(p_buf)+1);
+  }
+  supported_formats_len++;
+  XMOUNT_MALLOC(p_input_lib->p_supported_input_types,
+                char*,
+                supported_formats_len);
+  memcpy(p_input_lib->p_supported_input_types,
+         p_supported_formats,
+         supported_formats_len);
+
+  // Get, set and check lib_functions
+  pfun_input_GetFunctions(&(p_input_lib->lib_functions));
+  if(p_input_lib->lib_functions.CreateHandle==NULL ||
+     p_input_lib->lib_functions.DestroyHandle==NULL ||
+     p_input_lib->lib_functions.Open==NULL ||
+     p_input_lib->lib_functions.Close==NULL ||
+     p_input_lib->lib_functions.Size==NULL ||
+     p_input_lib->lib_functions.Read==NULL ||
+     p_input_lib->lib_functions.OptionsHelp==NULL ||
+     p_input_lib->lib_functions.OptionsParse==NULL ||
+     p_input_lib->lib_functions.GetInfofileContent==NULL ||
+     p_input_lib->lib_functions.GetErrorMessage==NULL ||
+     p_input_lib->lib_functions.FreeBuffer==NULL)
+  {
+    LOG_DEBUG("Missing implemention of one or more functions in lib %s!\n",
+              p_lib_name);
+    free(p_input_lib->p_supported_input_types);
+    free(p_input_lib->p_name);
+    free(p_input_lib);
+    dlclose(p_libxmount);
+    return e_XmountInput_Error_MissingLibraryFunction;
+  }
+
+  // Add entry to the input library list
+  XMOUNT_REALLOC(p_h->pp_libs,
+                 pts_XmountInputLib*,
+                 sizeof(pts_XmountInputLib)*(p_h->libs_count+1));
+  p_h->pp_libs[p_h->libs_count++]=p_input_lib;
+
+  LOG_DEBUG("Input library '%s' loaded successfully\n",p_lib_name);
+
+#undef XMOUNTINPUT_LOADLIBS__LOAD_SYMBOL
+
+  return e_XmountInput_Error_None;
+}
+
+te_XmountInput_Error XmountInput_GetLibraryCount(pts_XmountInputHandle p_h,
+                                                 uint32_t *p_count)
+{
+  // Params check
+  if(p_h==NULL) return e_XmountInput_Error_InvalidHandle;
+  if(p_count==NULL) return e_XmountInput_Error_InvalidBuffer;
+
+  *p_count=p_h->libs_count;
   return e_XmountInput_Error_None;
 }
 
@@ -273,6 +417,51 @@ te_XmountInput_Error XmountInput_GetOptionsHelpText(pts_XmountInputHandle p_h,
 }
 
 /*
+ * XmountInput_GetLibsInfoText
+ */
+te_XmountInput_Error XmountInput_GetLibsInfoText(pts_XmountInputHandle p_h,
+                                                 char **pp_info_text)
+{
+  char *p_buf=NULL;
+  char *p_info_text=NULL;
+  uint8_t first=0;
+
+  // Params check
+  if(p_h==NULL) return e_XmountInput_Error_InvalidHandle;
+  if(pp_info_text==NULL) return e_XmountInput_Error_InvalidBuffer;
+
+  // Loop over all loaded libs, extract name and supported formats and add to
+  // our text buffer
+  // TODO: IMPROVEMENT: Final text should be sorted by lib's name
+  for(uint32_t i=0;i<p_h->libs_count;i++) {
+    XMOUNT_STRAPP(p_info_text,"    - ");
+    XMOUNT_STRAPP(p_info_text,p_h->pp_libs[i]->p_name);
+    XMOUNT_STRAPP(p_info_text," supporting ");
+    XMOUNT_STRAPP(p_info_text,"    - ");
+    XMOUNT_STRAPP(p_info_text,"    - ");
+    p_buf=p_h->pp_libs[i]->p_supported_input_types;
+    first=1;
+    while(*p_buf!='\0') {
+      if(first==1) {
+        XMOUNT_STRAPP(p_info_text,"\"");
+        XMOUNT_STRAPP(p_info_text,p_buf);
+        XMOUNT_STRAPP(p_info_text,"\"");
+        first=0;
+      } else {
+        XMOUNT_STRAPP(p_info_text,", \"");
+        XMOUNT_STRAPP(p_info_text,p_buf);
+        XMOUNT_STRAPP(p_info_text,"\"");
+      }
+      p_buf+=(strlen(p_buf)+1);
+    }
+    XMOUNT_STRAPP(p_info_text,"\n");
+  }
+
+  *pp_info_text=p_info_text;
+  return e_XmountInput_Error_None;
+}
+
+/*
  * XmountInput_AddImage
  */
 te_XmountInput_Error XmountInput_AddImage(pts_XmountInputHandle p_h,
@@ -307,6 +496,26 @@ te_XmountInput_Error XmountInput_AddImage(pts_XmountInputHandle p_h,
   return e_XmountInput_Error_None;
 }
 
+/*!
+ * \brief Get input image count
+ *
+ * Get input image count.
+ *
+ * \param p_h Input handle
+ * \param p_count Input image count is returned in this variable
+ * \return e_XmountInput_Error_None on success
+ */
+te_XmountInput_Error XmountInput_GetImageCount(pts_XmountInputHandle p_h,
+                                               uint64_t *p_count)
+{
+  // Params check
+  if(p_h==NULL) return e_XmountInput_Error_InvalidHandle;
+  if(p_count==NULL) return e_XmountInput_Error_InvalidBuffer;
+
+  *p_count=p_h->images_count;
+  return e_XmountInput_Error_None;
+}
+
 /*
  * XmountInput_SetInputOffset
  */
@@ -334,6 +543,30 @@ te_XmountInput_Error XmountInput_SetInputSizeLimit(pts_XmountInputHandle p_h,
   LOG_DEBUG("Setting input image size limit to \"%" PRIu64 "\"\n",size_limit);
 
   p_h->image_size_limit=size_limit;
+  return e_XmountInput_Error_None;
+}
+
+/*
+ * XmountInput_Open
+ */
+te_XmountInput_Error XmountInput_Open(pts_XmountInputHandle p_h) {
+  // Params check
+  if(p_h==NULL) return e_XmountInput_Error_InvalidHandle;
+
+  // TODO: Implement
+
+  return e_XmountInput_Error_None;
+}
+
+/*
+ * XmountInput_Close
+ */
+te_XmountInput_Error XmountInput_Close(pts_XmountInputHandle p_h) {
+  // Params check
+  if(p_h==NULL) return e_XmountInput_Error_InvalidHandle;
+
+  // TODO: Implement
+
   return e_XmountInput_Error_None;
 }
 
@@ -374,9 +607,80 @@ te_XmountInput_Error XmountInput_WriteData(pts_XmountInputHandle p_h,
   return e_XmountInput_Error_None;
 }
 
+/*
+ * XmountInput_GetInfoFileContent
+ */
+te_XmountInput_Error XmountInput_GetInfoFileContent(pts_XmountInputHandle p_h,
+                                                    char **pp_content)
+{
+  int ret=0;
+  char *p_buf=NULL;
+  char *p_content=NULL;
+
+  // Params check
+  if(p_h==NULL) return e_XmountInput_Error_InvalidHandle;
+  if(pp_content==NULL) return e_XmountInput_Error_InvalidBuffer;
+
+  for(uint64_t i=0;i<p_h->images_count;i++) {
+    ret=p_h->pp_images[i]->p_functions->
+      GetInfofileContent(p_h->pp_images[i]->p_handle,(const char**)&p_buf);
+    if(ret!=0) {
+      LOG_ERROR("Unable to get info file content for image '%s': %s!\n",
+                p_h->pp_images[i]->pp_files[0],
+                p_h->pp_images[i]->p_functions->GetErrorMessage(ret));
+      return e_XmountInput_Error_FailedGettingInfoFileContent;
+    }
+    // Add infos to main buffer and free p_buf
+    XMOUNT_STRAPP(p_content,"\n--> ");
+    XMOUNT_STRAPP(p_content,p_h->pp_images[i]->pp_files[0]);
+    XMOUNT_STRAPP(p_content," <--\n");
+    if(p_buf!=NULL) {
+      XMOUNT_STRAPP(p_content,p_buf);
+      p_h->pp_images[i]->p_functions->FreeBuffer(p_buf);
+    } else {
+      XMOUNT_STRAPP(p_content,"None\n");
+    }
+  }
+
+  *pp_content=p_content;
+  return e_XmountInput_Error_None;
+}
+
 /*******************************************************************************
  * Private functions implementations
  ******************************************************************************/
+/*
+ * FindInputLib
+ */
+te_XmountInput_Error FindInputLib(pts_XmountInputHandle p_h,
+                                  pts_XmountInputImage p_input_image)
+{
+  char *p_buf;
+
+  LOG_DEBUG("Trying to find suitable library for input type '%s'.\n",
+            p_input_image->p_type);
+
+  // Loop over all loaded libs
+  for(uint32_t i=0;i<p_h->libs_count;i++) {
+    LOG_DEBUG("Checking input library %s\n",p_h->pp_libs[i]->p_name);
+    p_buf=p_h->pp_libs[i]->p_supported_input_types;
+    while(*p_buf!='\0') {
+      if(strcmp(p_buf,p_input_image->p_type)==0) {
+        // Library supports input type, set lib functions
+        LOG_DEBUG("Input library '%s' pretends to handle that input type.\n",
+                  p_h->pp_libs[i]->p_name);
+        p_input_image->p_functions=&(p_h->pp_libs[i]->lib_functions);
+        return e_XmountInput_Error_None;
+      }
+      p_buf+=(strlen(p_buf)+1);
+    }
+  }
+
+  LOG_DEBUG("Couldn't find any suitable library.\n");
+
+  // No library supporting input type found
+  return e_XmountInput_Error_UnsupportedFormat;
+}
 
 //! Read data from input image
 /*!

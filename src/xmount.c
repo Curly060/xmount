@@ -496,18 +496,10 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
         // Set input lib options
         if((i+1)<argc) {
           i++;
-          if(glob_xmount.input.pp_lib_params==NULL) {
-            if(SplitLibraryParameters(pp_argv[i],
-                                      &(glob_xmount.input.lib_params_count),
-                                      &(glob_xmount.input.pp_lib_params)
-                                     )==FALSE)
-            {
-              LOG_ERROR("Unable to parse input library options '%s'!\n",
-                        pp_argv[i]);
-              return FALSE;
-            }
-          } else {
-            LOG_ERROR("You can only specify --inopts once!")
+          input_ret=XmountInput_SetOptions(glob_xmount.h_input,pp_argv[i]);
+          if(input_ret!=e_XmountInput_Error_None) {
+            LOG_ERROR("Unable to parse input library options: Error code %u!\n",
+                      input_ret);
             return FALSE;
           }
         } else {
@@ -554,17 +546,20 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
         // Set input image offset
         if((i+1)<argc) {
           i++;
-          glob_xmount.input.image_offset=StrToUint64(pp_argv[i],&ret);
+          buf=StrToUint64(pp_argv[i],&ret);
           if(ret==0) {
-            LOG_ERROR("Unable to convert '%s' to a number!\n",pp_argv[i])
+            LOG_ERROR("Unable to convert '%s' to a number!\n",pp_argv[i]);
+            return FALSE;
+          }
+          input_ret=XmountInput_SetInputOffset(glob_xmount.h_input,buf);
+          if(input_ret!=e_XmountInput_Error_None) {
+            LOG_ERROR("Unable to set input offset: Error code %u!\n",input_ret);
             return FALSE;
           }
         } else {
           LOG_ERROR("You must specify an offset!\n")
           return FALSE;
         }
-        LOG_DEBUG("Setting input image offset to \"%" PRIu64 "\"\n",
-                  glob_xmount.input.image_offset)
       } else if(strcmp(pp_argv[i],"--out")==0) {
         // Set output lib to use
         if((i+1)<argc) {
@@ -619,17 +614,21 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
         // Set input image size limit
         if((i+1)<argc) {
           i++;
-          glob_xmount.input.image_size_limit=StrToUint64(pp_argv[i],&ret);
+          buf=StrToUint64(pp_argv[i],&ret);
           if(ret==0) {
-            LOG_ERROR("Unable to convert '%s' to a number!\n",pp_argv[i])
+            LOG_ERROR("Unable to convert '%s' to a number!\n",pp_argv[i]);
+            return FALSE;
+          }
+          input_ret=XmountInput_SetInputSizeLimit(glob_xmount.h_input,buf);
+          if(input_ret!=e_XmountInput_Error_None) {
+            LOG_ERROR("Unable to set input size limit: Error code %u!\n",
+                      input_ret);
             return FALSE;
           }
         } else {
           LOG_ERROR("You must specify a size limit!\n")
           return FALSE;
         }
-        LOG_DEBUG("Setting input image size limit to \"%" PRIu64 "\"\n",
-                  glob_xmount.input.image_size_limit)
       } else if(strcmp(pp_argv[i],"--version")==0 ||
                 strcmp(pp_argv[i],"--info")==0)
       {
@@ -1551,96 +1550,6 @@ static void FreeResources() {
   // Before we return, initialize everything in case ReleaseResources would be
   // called again.
   InitResources();
-}
-
-//! Function to split given library options
-static int SplitLibraryParameters(char *p_params,
-                                  uint32_t *p_ret_opts_count,
-                                  pts_LibXmountOptions **ppp_ret_opt)
-{
-  pts_LibXmountOptions p_opts=NULL;
-  pts_LibXmountOptions *pp_opts=NULL;
-  uint32_t params_len;
-  uint32_t opts_count=0;
-  uint32_t sep_pos=0;
-  char *p_buf=p_params;
-
-  if(p_params==NULL) return FALSE;
-
-  // Get params length
-  params_len=strlen(p_params);
-
-  // Return if no params specified
-  if(params_len==0) {
-    *ppp_ret_opt=NULL;
-    p_ret_opts_count=0;
-    return TRUE;
-  }
-
-  // Split params
-  while(*p_buf!='\0') {
-    XMOUNT_MALLOC(p_opts,pts_LibXmountOptions,sizeof(ts_LibXmountOptions));
-    p_opts->valid=0;
-
-#define FREE_PP_OPTS() {                                 \
-  if(pp_opts!=NULL) {                                    \
-    for(uint32_t i=0;i<opts_count;i++) free(pp_opts[i]); \
-    free(pp_opts);                                       \
-  }                                                      \
-}
-
-    // Search next assignment operator
-    sep_pos=0;
-    while(p_buf[sep_pos]!='\0' &&  p_buf[sep_pos]!='=') sep_pos++;
-    if(sep_pos==0 || p_buf[sep_pos]=='\0') {
-      LOG_ERROR("Library parameter '%s' is missing an assignment operator!\n",
-                p_buf);
-      free(p_opts);
-      FREE_PP_OPTS();
-      return FALSE;
-    }
-
-    // Save option key
-    XMOUNT_STRNSET(p_opts->p_key,p_buf,sep_pos);
-    p_buf+=(sep_pos+1);
-
-    // Search next separator
-    sep_pos=0;
-    while(p_buf[sep_pos]!='\0' &&  p_buf[sep_pos]!=',') sep_pos++;
-    if(sep_pos==0) {
-      LOG_ERROR("Library parameter '%s' is not of format key=value!\n",
-                p_opts->p_key);
-      free(p_opts->p_key);
-      free(p_opts);
-      FREE_PP_OPTS();
-      return FALSE;
-    }
-
-    // Save option value
-    XMOUNT_STRNSET(p_opts->p_value,p_buf,sep_pos);
-    p_buf+=sep_pos;
-
-    LOG_DEBUG("Extracted library option: '%s' = '%s'\n",
-              p_opts->p_key,
-              p_opts->p_value);
-
-#undef FREE_PP_OPTS
-
-    // Add current option to return array
-    XMOUNT_REALLOC(pp_opts,
-                   pts_LibXmountOptions*,
-                   sizeof(pts_LibXmountOptions)*(opts_count+1));
-    pp_opts[opts_count++]=p_opts;
-
-    // If we're not at the end of p_params, skip over separator for next run
-    if(*p_buf!='\0') p_buf++;
-  }
-
-  LOG_DEBUG("Extracted a total of %" PRIu32 " library options\n",opts_count);
-
-  *p_ret_opts_count=opts_count;
-  *ppp_ret_opt=pp_opts;
-  return TRUE;
 }
 
 /*******************************************************************************

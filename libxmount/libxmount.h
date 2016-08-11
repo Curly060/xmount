@@ -18,6 +18,7 @@
 #ifndef LIBXMOUNT_H
 #define LIBXMOUNT_H
 
+#include <inttypes.h>
 #include "endianness.h"
 
 /*
@@ -51,9 +52,14 @@ typedef struct s_LibXmountOptions {
   uint8_t valid;
 } ts_LibXmountOptions, *pts_LibXmountOptions;
 
-//! Log messages
 /*!
- * \param p_msg_type "ERROR", "DEBUG", etc...
+ * \brief Print error and debug messages to stdout
+ *
+ * Function to loag various messages. This function should not be accessed
+ * directly but rather trough the macros LIBXMOUNT_LOG_ERROR,
+ * LIBXMOUNT_LOG_WARNING or LIBXMOUNT_LOG_DEBUG.
+ *
+ * \param p_msg_type "ERROR" or "DEBUG"
  * \param p_calling_fun Name of calling function
  * \param line Line number of call
  * \param p_msg Message string
@@ -64,6 +70,20 @@ void LogMessage(char *p_msg_type,
                 int line,
                 char *p_msg,
                 ...);
+
+/*!
+ * \brief Split given library options
+ *
+ * Splits the given library option string LibXmountOptions elements
+ *
+ * \param p_params Library option string
+ * \param p_ret_opts_count Amount of LibXmountOptions elements returned
+ * \param ppp_ret_opt Array to save the returned LibXmountOptions elements
+ * \return 0 on success
+ */
+int XmountLib_SplitLibParams(char *p_params,
+                             uint32_t *p_ret_opts_count,
+                             pts_LibXmountOptions **ppp_ret_opt);
 
 int32_t StrToInt32(const char *p_value, int *p_ok);
 uint32_t StrToUint32(const char *p_value, int *p_ok);

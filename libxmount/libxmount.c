@@ -22,17 +22,104 @@
 #include <stdint.h>
 #include <errno.h>
 #include <stdarg.h>
+#include <string.h>
 
 #include "libxmount.h"
+#include "../src/macros.h"
 
-//! Print error and debug messages to stdout
-/*!
- * \param p_msg_type "ERROR" or "DEBUG"
- * \param p_calling_fun Name of calling function
- * \param line Line number of call
- * \param p_msg Message string
- * \param ... Variable params with values to include in message string
+/*
+ * XmountLib_SplitLibParams
  */
+int XmountLib_SplitLibParams(char *p_params,
+                             uint32_t *p_ret_opts_count,
+                             pts_LibXmountOptions **ppp_ret_opt)
+{
+  pts_LibXmountOptions p_opts=NULL;
+  pts_LibXmountOptions *pp_opts=NULL;
+  uint32_t params_len;
+  uint32_t opts_count=0;
+  uint32_t sep_pos=0;
+  char *p_buf=p_params;
+
+  if(p_params==NULL) return 0;
+
+  // Get params length
+  params_len=strlen(p_params);
+
+  // Return if no params specified
+  if(params_len==0) {
+    *ppp_ret_opt=NULL;
+    p_ret_opts_count=0;
+    return 1;
+  }
+
+  // Split params
+  while(*p_buf!='\0') {
+    XMOUNT_MALLOC(p_opts,pts_LibXmountOptions,sizeof(ts_LibXmountOptions));
+    p_opts->valid=0;
+
+#define FREE_PP_OPTS() {                                 \
+  if(pp_opts!=NULL) {                                    \
+    for(uint32_t i=0;i<opts_count;i++) free(pp_opts[i]); \
+    free(pp_opts);                                       \
+  }                                                      \
+}
+
+    // Search next assignment operator
+    sep_pos=0;
+    while(p_buf[sep_pos]!='\0' &&  p_buf[sep_pos]!='=') sep_pos++;
+    if(sep_pos==0 || p_buf[sep_pos]=='\0') {
+      LOG_ERROR("Library parameter '%s' is missing an assignment operator!\n",
+                p_buf);
+      free(p_opts);
+      FREE_PP_OPTS();
+      return 0;
+    }
+
+    // Save option key
+    XMOUNT_STRNSET(p_opts->p_key,p_buf,sep_pos);
+    p_buf+=(sep_pos+1);
+
+    // Search next separator
+    sep_pos=0;
+    while(p_buf[sep_pos]!='\0' &&  p_buf[sep_pos]!=',') sep_pos++;
+    if(sep_pos==0) {
+      LOG_ERROR("Library parameter '%s' is not of format key=value!\n",
+                p_opts->p_key);
+      free(p_opts->p_key);
+      free(p_opts);
+      FREE_PP_OPTS();
+      return 0;
+    }
+
+    // Save option value
+    XMOUNT_STRNSET(p_opts->p_value,p_buf,sep_pos);
+    p_buf+=sep_pos;
+
+    LIBXMOUNT_LOG_DEBUG("Extracted library option: '%s' = '%s'\n",
+                        p_opts->p_key,
+                        p_opts->p_value);
+
+#undef FREE_PP_OPTS
+
+    // Add current option to return array
+    XMOUNT_REALLOC(pp_opts,
+                   pts_LibXmountOptions*,
+                   sizeof(pts_LibXmountOptions)*(opts_count+1));
+    pp_opts[opts_count++]=p_opts;
+
+    // If we're not at the end of p_params, skip over separator for next run
+    if(*p_buf!='\0') p_buf++;
+  }
+
+  LIBXMOUNT_LOG_DEBUG("Extracted a total of %" PRIu32 " library options\n",
+                      opts_count);
+
+  *p_ret_opts_count=opts_count;
+  *ppp_ret_opt=pp_opts;
+  return 1;
+}
+
 /*
  * LogMessage
  */

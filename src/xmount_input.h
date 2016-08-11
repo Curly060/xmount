@@ -100,6 +100,10 @@ typedef enum e_XmountInput_Error {
   e_XmountInput_Error_InvalidString,
   //! A given array is invalid
   e_XmountInput_Error_InvalidArray,
+  //! Library options have already been set
+  e_XmountInput_Error_LibOptionsAlreadySet,
+  //! Library options couldn't be parsed
+  e_XmountInput_Error_FailedParsingOptions,
 /*
 
   //! A given file path / name is invalid
@@ -188,6 +192,18 @@ te_XmountInput_Error XmountInput_GetSupportedFormats(pts_XmountInputHandle p_h,
                                                      char **pp_formats);
 
 /*!
+ * \brief Set library options
+ *
+ * Parses the given library option string (as given after --inopts).
+ *
+ * \param p_h Input handle
+ * \param p_options Library option string
+ * \return e_XmountInput_Error_None on success
+ */
+te_XmountInput_Error XmountInput_SetOptions(pts_XmountInputHandle p_h,
+                                            char *p_options);
+
+/*!
  * \brief Return all library specific option help texts
  *
  * Returns a string containing help messages for all loaded input lib options.
@@ -201,6 +217,15 @@ te_XmountInput_Error XmountInput_GetSupportedFormats(pts_XmountInputHandle p_h,
  */
 te_XmountInput_Error XmountInput_GetOptionsHelpText(pts_XmountInputHandle p_h,
                                                     char **pp_help_text);
+
+/*!
+ * \brief Generate a text containing infos about loaded libs
+ *
+ * TODO
+ *
+ */
+te_XmountInput_Error XmountInput_GetLibsInfoText(pts_XmountInputHandle p_h,
+                                                 char **pp_info_text);
 
 /*!
  * \brief Add an input image

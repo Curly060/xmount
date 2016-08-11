@@ -203,6 +203,34 @@ te_XmountInput_Error XmountInput_GetSupportedFormats(pts_XmountInputHandle p_h,
 }
 
 /*
+ * XmountInput_SetOptions
+ */
+te_XmountInput_Error XmountInput_SetOptions(pts_XmountInputHandle p_h,
+                                            char *p_options)
+{
+  // Params check
+  if(p_h==NULL) return e_XmountInput_Error_InvalidHandle;
+  if(p_options==NULL) return e_XmountInput_Error_InvalidString;
+
+  // Make sure library parameters haven't been set previously
+  if(p_h->pp_lib_params!=NULL) {
+    LOG_ERROR("Input library options already set!\n");
+    return e_XmountInput_Error_LibOptionsAlreadySet;
+  }
+
+  // Save options
+  if(XmountLib_SplitLibParams(p_options,
+                              &(p_h->lib_params_count),
+                              &(p_h->pp_lib_params))!=0)
+  {
+    LOG_ERROR("Unable to parse input library options '%s'!\n",p_options);
+    return e_XmountInput_Error_FailedParsingOptions;
+  }
+
+  return e_XmountInput_Error_None;
+}
+
+/*
  * XmountInput_GetOptionsHelpText
  */
 te_XmountInput_Error XmountInput_GetOptionsHelpText(pts_XmountInputHandle p_h,
@@ -285,7 +313,12 @@ te_XmountInput_Error XmountInput_AddImage(pts_XmountInputHandle p_h,
 te_XmountInput_Error XmountInput_SetInputOffset(pts_XmountInputHandle p_h,
                                                 uint64_t offset)
 {
-  // TODO: Implement
+  // Params check
+  if(p_h==NULL) return e_XmountInput_Error_InvalidHandle;
+
+  LOG_DEBUG("Setting input image offset to \"%" PRIu64 "\"\n",offset);
+
+  p_h->image_offset=offset;
   return e_XmountInput_Error_None;
 }
 
@@ -295,7 +328,12 @@ te_XmountInput_Error XmountInput_SetInputOffset(pts_XmountInputHandle p_h,
 te_XmountInput_Error XmountInput_SetInputSizeLimit(pts_XmountInputHandle p_h,
                                                    uint64_t size_limit)
 {
-  // TODO: Implement
+  // Params check
+  if(p_h==NULL) return e_XmountInput_Error_InvalidHandle;
+
+  LOG_DEBUG("Setting input image size limit to \"%" PRIu64 "\"\n",size_limit);
+
+  p_h->image_size_limit=size_limit;
   return e_XmountInput_Error_None;
 }
 

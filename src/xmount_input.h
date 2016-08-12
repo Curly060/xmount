@@ -60,6 +60,8 @@ typedef enum e_XmountInput_Error {
   e_XmountInput_Error_MissingLibraryFunction,
   //! Unsupported input image format
   e_XmountInput_Error_UnsupportedFormat,
+  //! Specified image number is incorrect
+  e_XmountInput_Error_NoSuchImage,
 /*
 
   //! A given file path / name is invalid
@@ -278,15 +280,43 @@ te_XmountInput_Error XmountInput_Open(pts_XmountInputHandle p_h);
  */
 te_XmountInput_Error XmountInput_Close(pts_XmountInputHandle p_h);
 
+/*!
+ * \brief Get the size of an input image
+ *
+ * Returns the size (in bytes) of the specified input image.
+ *
+ * \param p_h Input handle
+ * \param image_nr Image number for which to return the size
+ * \param p_size On success, size is returned in this variable
+ * \return e_XmountInput_Error_None on success
+ */
 te_XmountInput_Error XmountInput_GetSize(pts_XmountInputHandle p_h,
                                          uint64_t image_nr,
                                          uint64_t *p_size);
 
+/*!
+ * \brief Read data from an input image
+ *
+ * Reads count bytes from input image image_nr starting at given offset and
+ * copies the data into p_buf.
+ *
+ * The given buffer must be pre-allocated to hold as many bytes as should be
+ * read!
+ *
+ * \param p_h Input handle
+ * \param image_nr Image number for which to return the size
+ * \param p_buf Buffer into which to copy read data
+ * \param offset Offset at which to start reading
+ * \param count Amount of bytes to read
+ * \param p_read On success, amount of bytes read is returned in this variable
+ * \return e_XmountInput_Error_None on success
+ */
 te_XmountInput_Error XmountInput_ReadData(pts_XmountInputHandle p_h,
                                           uint64_t image_nr,
                                           char *p_buf,
                                           uint64_t offset,
-                                          uint64_t count);
+                                          uint64_t count,
+                                          uint64_t *p_read);
 
 te_XmountInput_Error XmountInput_WriteData(pts_XmountInputHandle p_h,
                                            uint64_t image_nr,

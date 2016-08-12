@@ -152,18 +152,34 @@ te_XmountInput_Error XmountInput_DestroyHandle(pts_XmountInputHandle *pp_h) {
   p_h=*pp_h;
 
   // Free resources
+  if(p_h->images_count!=0 && p_h->pp_images!=NULL) {
+    // TODO: Close images
+  }
   if(p_h->libs_count>0 && p_h->pp_libs!=NULL) {
-    // TODO
+    // Unload all input libs
+    for(uint32_t i=0;i<p_h->libs_count;i++) {
+      if(p_h->pp_libs[i]->p_supported_input_types!=NULL) {
+        XMOUNT_FREE(p_h->pp_libs[i]->p_supported_input_types);
+      }
+      if(p_h->pp_libs[i]->p_lib!=NULL) {
+        dlclose(p_h->pp_libs[i]->p_lib);
+        p_h->pp_libs[i]->p_lib=NULL;
+      }
+      if(p_h->pp_libs[i]->p_name!=NULL) {
+        XMOUNT_FREE(p_h->pp_libs[i]->p_name);
+      }
+      XMOUNT_FREE(p_h->pp_libs[i]);
+    }
+    XMOUNT_FREE(p_h->pp_libs);
+    p_h->libs_count=0;
   }
   if(p_h->lib_params_count!=0 && p_h->pp_lib_params!=NULL) {
     // Free library parameter array
     for(uint32_t i=0;i<p_h->lib_params_count;i++) {
-      free(p_h->pp_lib_params[i]);
+      XMOUNT_FREE(p_h->pp_lib_params[i]);
     }
-    free(p_h->pp_lib_params);
-  }
-  if(p_h->images_count!=0 && p_h->pp_images!=NULL) {
-    // TODO
+    XMOUNT_FREE(p_h->pp_lib_params);
+    p_h->lib_params_count=0;
   }
 
   return e_XmountInput_Error_None;
@@ -562,10 +578,50 @@ te_XmountInput_Error XmountInput_Open(pts_XmountInputHandle p_h) {
  * XmountInput_Close
  */
 te_XmountInput_Error XmountInput_Close(pts_XmountInputHandle p_h) {
+  int ret=0;
+
   // Params check
   if(p_h==NULL) return e_XmountInput_Error_InvalidHandle;
 
-  // TODO: Implement
+  if(p_h->pp_images!=NULL) {
+    // Close all input images
+    for(uint64_t i=0;i<p_h->images_count;i++) {
+      if(p_h->pp_images[i]==NULL) continue;
+      if(p_h->pp_images[i]->p_functions!=NULL) {
+        if(p_h->pp_images[i]->p_handle!=NULL) {
+          ret=p_h->pp_images[i]->p_functions->
+            Close(p_h->pp_images[i]->p_handle);
+          if(ret!=0) {
+            LOG_ERROR("Unable to close input image '%s': %s\n",
+                      p_h->pp_images[i]->pp_files[0]!=NULL ?
+                        p_h->pp_images[i]->pp_files[0] : "n/a",
+                      p_h->pp_images[i]->p_functions->GetErrorMessage(ret));
+          }
+          ret=p_h->pp_images[i]->p_functions->
+                DestroyHandle(&(p_h->pp_images[i]->p_handle));
+          if(ret!=0) {
+            LOG_ERROR("Unable to destroy handle of input image '%s': %s\n",
+                      p_h->pp_images[i]->pp_files[0]!=NULL ?
+                        p_h->pp_images[i]->pp_files[0] : "n/a",
+                      p_h->pp_images[i]->p_functions->GetErrorMessage(ret));
+          }
+          p_h->pp_images[i]->p_handle=NULL;
+        }
+      }
+      if(p_h->pp_images[i]->pp_files!=NULL) {
+        for(uint64_t ii=0;ii<p_h->pp_images[i]->files_count;ii++) {
+          if(p_h->pp_images[i]->pp_files[ii]!=NULL)
+            XMOUNT_FREE(p_h->pp_images[i]->pp_files[ii]);
+        }
+        XMOUNT_FREE(p_h->pp_images[i]->pp_files);
+      }
+      if(p_h->pp_images[i]->p_type!=NULL) {
+        XMOUNT_FREE(p_h->pp_images[i]->p_type);
+      }
+      XMOUNT_FREE(p_h->pp_images[i]);
+    }
+    XMOUNT_FREE(p_h->pp_images);
+  }
 
   return e_XmountInput_Error_None;
 }
@@ -577,7 +633,12 @@ te_XmountInput_Error XmountInput_GetSize(pts_XmountInputHandle p_h,
                                          uint64_t image_nr,
                                          uint64_t *p_size)
 {
-  // TODO: Implement
+  // Params check
+  if(p_h==NULL) return e_XmountInput_Error_InvalidHandle;
+  if(image_nr>=p_h->images_count) return e_XmountInput_Error_NoSuchImage;
+  if(p_size==NULL) return e_XmountInput_Error_InvalidBuffer;
+
+  *p_size=p_h->pp_images[image_nr]->size;
   return e_XmountInput_Error_None;
 }
 
@@ -588,9 +649,25 @@ te_XmountInput_Error XmountInput_ReadData(pts_XmountInputHandle p_h,
                                           uint64_t image_nr,
                                           char *p_buf,
                                           uint64_t offset,
-                                          uint64_t count)
+                                          uint64_t count,
+                                          uint64_t *p_read)
 {
+  int ret=0;
+
+  // Params check
+  if(p_h==NULL) return e_XmountInput_Error_InvalidHandle;
+  if(image_nr>=p_h->images_count) return e_XmountInput_Error_NoSuchImage;
+  if(p_buf==NULL) return e_XmountInput_Error_InvalidBuffer;
+
   // TODO: Implement
+/*
+  ret=ReadInputImageData(glob_xmount.input.pp_images[image],
+                            p_buf,
+                            offset,
+                            count,
+                            p_read);
+*/
+
   return e_XmountInput_Error_None;
 }
 

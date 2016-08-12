@@ -1280,6 +1280,7 @@ static void InitResources() {
 static void FreeResources() {
   int ret;
   te_XmountCache_Error cache_ret=e_XmountCache_Error_None;
+  te_XmountInput_Error input_ret=e_XmountInput_Error_None;
 
   LOG_DEBUG("Freeing all resources\n");
 
@@ -1377,58 +1378,16 @@ static void FreeResources() {
   }
 
   // Input
-  if(glob_xmount.input.pp_images!=NULL) {
-    // Close all input images
-    for(uint64_t i=0;i<glob_xmount.input.images_count;i++) {
-      if(glob_xmount.input.pp_images[i]==NULL) continue;
-      if(glob_xmount.input.pp_images[i]->p_functions!=NULL) {
-        if(glob_xmount.input.pp_images[i]->p_handle!=NULL) {
-          ret=glob_xmount.input.pp_images[i]->p_functions->
-                Close(glob_xmount.input.pp_images[i]->p_handle);
-          if(ret!=0) {
-            LOG_ERROR("Unable to close input image: %s\n",
-                      glob_xmount.input.pp_images[i]->p_functions->
-                        GetErrorMessage(ret));
-          }
-          ret=glob_xmount.input.pp_images[i]->p_functions->
-                DestroyHandle(&(glob_xmount.input.pp_images[i]->p_handle));
-          if(ret!=0) {
-            LOG_ERROR("Unable to destroy input image handle: %s\n",
-                      glob_xmount.input.pp_images[i]->p_functions->
-                        GetErrorMessage(ret));
-          }
-        }
-      }
-      if(glob_xmount.input.pp_images[i]->pp_files!=NULL) {
-        for(uint64_t ii=0;ii<glob_xmount.input.pp_images[i]->files_count;ii++) {
-          if(glob_xmount.input.pp_images[i]->pp_files[ii]!=NULL)
-            free(glob_xmount.input.pp_images[i]->pp_files[ii]);
-        }
-        free(glob_xmount.input.pp_images[i]->pp_files);
-      }
-      if(glob_xmount.input.pp_images[i]->p_type!=NULL)
-        free(glob_xmount.input.pp_images[i]->p_type);
-      free(glob_xmount.input.pp_images[i]);
-    }
-    free(glob_xmount.input.pp_images);
+  // Just in case close was not already called, call it now
+  input_ret=XmountInput_Close(glob_xmount.h_input);
+  if(input_ret!=e_XmountInput_Error_None) {
+    LOG_ERROR("Unable to close input image(s): Error code %u: Ignoring!\n",
+              input_ret);
   }
-  if(glob_xmount.input.pp_lib_params!=NULL) {
-    for(uint32_t i=0;i<glob_xmount.input.lib_params_count;i++)
-      free(glob_xmount.input.pp_lib_params[i]);
-    free(glob_xmount.input.pp_lib_params);
-  }
-  if(glob_xmount.input.pp_libs!=NULL) {
-    // Unload all input libs
-    for(uint32_t i=0;i<glob_xmount.input.libs_count;i++) {
-      if(glob_xmount.input.pp_libs[i]->p_supported_input_types!=NULL)
-        free(glob_xmount.input.pp_libs[i]->p_supported_input_types);
-      if(glob_xmount.input.pp_libs[i]->p_lib!=NULL)
-        dlclose(glob_xmount.input.pp_libs[i]->p_lib);
-      if(glob_xmount.input.pp_libs[i]->p_name!=NULL)
-        free(glob_xmount.input.pp_libs[i]->p_name);
-      free(glob_xmount.input.pp_libs[i]);
-    }
-    free(glob_xmount.input.pp_libs);
+  input_ret=XmountInput_DestroyHandle(&(glob_xmount.h_input));
+  if(input_ret!=e_XmountInput_Error_None) {
+    LOG_ERROR("Unable to destroy input handle: Error code %u: Ignoring!\n",
+              input_ret);
   }
 
   // Args
@@ -1450,7 +1409,14 @@ static void FreeResources() {
  * \return 0 on success
  */
 static int LibXmount_Morphing_ImageCount(uint64_t *p_count) {
-  *p_count=glob_xmount.input.images_count;
+  te_XmountInput_Error input_ret=e_XmountInput_Error_None;
+
+  input_ret=XmountInput_GetImageCount(glob_xmount.h_input,p_count);
+  if(input_ret!=e_XmountInput_Error_None) {
+    LOG_ERROR("Unable to get input image count: Error code %u!\n",input_ret);
+    return -EIO;
+  }
+
   return 0;
 }
 
@@ -1461,8 +1427,16 @@ static int LibXmount_Morphing_ImageCount(uint64_t *p_count) {
  * \return 0 on success
  */
 static int LibXmount_Morphing_Size(uint64_t image, uint64_t *p_size) {
-  if(image>=glob_xmount.input.images_count) return -1;
-  *p_size=glob_xmount.input.pp_images[image]->size;
+  te_XmountInput_Error input_ret=e_XmountInput_Error_None;
+
+  input_ret=XmountInput_GetSize(glob_xmount.h_input,image,p_size);
+  if(input_ret!=e_XmountInput_Error_None) {
+    LOG_ERROR("Unable to get size of input image %" PRIu64 ": Error code %u!\n",
+              image,
+              input_ret);
+    return -EIO;
+  }
+
   return 0;
 }
 
@@ -1481,12 +1455,23 @@ static int LibXmount_Morphing_Read(uint64_t image,
                                    size_t count,
                                    size_t *p_read)
 {
-  if(image>=glob_xmount.input.images_count) return -EIO;
-  return ReadInputImageData(glob_xmount.input.pp_images[image],
-                            p_buf,
-                            offset,
-                            count,
-                            p_read);
+  te_XmountInput_Error input_ret=e_XmountInput_Error_None;
+
+  input_ret=XmountInput_ReadData(glob_xmount.h_input,
+                                 image,
+                                 p_buf,
+                                 offset,
+                                 count,
+                                 p_read);
+  if(input_ret!=e_XmountInput_Error_None) {
+    LOG_ERROR("Unable to read data of input image %" PRIu64
+                ": Error code %u!\n",
+              image,
+              input_ret);
+    return -EIO;
+  }
+
+  return 0;
 }
 
 /*******************************************************************************

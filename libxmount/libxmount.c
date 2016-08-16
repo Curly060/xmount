@@ -27,6 +27,13 @@
 #include "libxmount.h"
 #include "../src/macros.h"
 
+#define LOG_WARNING(...) {            \
+  LIBXMOUNT_LOG_WARNING(__VA_ARGS__); \
+}
+#define LOG_ERROR(...) {            \
+  LIBXMOUNT_LOG_ERROR(__VA_ARGS__); \
+}
+
 /*
  * XmountLib_SplitLibParams
  */

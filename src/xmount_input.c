@@ -17,7 +17,6 @@
 
 #include <stdlib.h> // For calloc
 #include <string.h> // For memcpy
-//#include <errno.h>
 #include <dlfcn.h> // For dlopen, dlclose, dlsym
 
 #include "xmount_input.h"
@@ -88,12 +87,8 @@ typedef struct s_XmountInputHandle {
   uint64_t image_offset;
   //! Input image size limit (--sizelimit)
   uint64_t image_size_limit;
-
-  // TODO: Move
-  //! MD5 hash of partial input image (lower 64 bit) (after morph)
-  //uint64_t image_hash_lo;
-  //! MD5 hash of partial input image (higher 64 bit) (after morph)
-  //uint64_t image_hash_hi;
+  //! Enable debugging
+  uint8_t debug;
 } ts_XmountInputHandle;
 
 /*******************************************************************************
@@ -110,8 +105,8 @@ typedef struct s_XmountInputHandle {
  * \param p_input_image Input image to search input lib for
  * \return e_XmountInput_Error_None on success
  */
-te_XmountInput_Error FindInputLib(pts_XmountInputHandle p_h,
-                                  pts_XmountInputImage p_input_image);
+te_XmountInput_Error XmountInput_FindLib(pts_XmountInputHandle p_h,
+                                         pts_XmountInputImage p_input_image);
 
 /*******************************************************************************
  * Public functions implementations
@@ -186,6 +181,17 @@ te_XmountInput_Error XmountInput_DestroyHandle(pts_XmountInputHandle *pp_h) {
 }
 
 /*
+ * XmountInput_EnableDebugging
+ */
+te_XmountInput_Error XmountInput_EnableDebugging(pts_XmountInputHandle p_h) {
+  // Params check
+  if(p_h==NULL) return e_XmountInput_Error_InvalidHandle;
+
+  p_h->debug=1;
+  return e_XmountInput_Error_None;
+}
+
+/*
  * XmountInput_AddLibrary
  */
 te_XmountInput_Error XmountInput_AddLibrary(pts_XmountInputHandle p_h,
@@ -218,8 +224,7 @@ te_XmountInput_Error XmountInput_AddLibrary(pts_XmountInputHandle p_h,
               name,                                              \
               p_library_path);                                   \
     dlclose(p_libxmount);                                        \
-    p_libxmount=NULL;                                            \
-    continue;                                                    \
+    return e_XmountInput_Error_FailedLoadingSymbol;              \
   }                                                              \
 }
 
@@ -233,8 +238,8 @@ te_XmountInput_Error XmountInput_AddLibrary(pts_XmountInputHandle p_h,
   }
 
   // Load library symbols
-  LIBXMOUNT_LOAD_SYMBOL("LibXmount_Input_GetApiVersion",
-                        pfun_input_GetApiVersion);
+  XMOUNTINPUT_LOADLIBS__LOAD_SYMBOL("LibXmount_Input_GetApiVersion",
+                                    pfun_input_GetApiVersion);
 
   // Check library's API version
   if(pfun_input_GetApiVersion()!=LIBXMOUNT_INPUT_API_VERSION) {
@@ -245,10 +250,10 @@ te_XmountInput_Error XmountInput_AddLibrary(pts_XmountInputHandle p_h,
     return e_XmountInput_Error_WrongLibraryApiVersion;
   }
 
-  LIBXMOUNT_LOAD_SYMBOL("LibXmount_Input_GetSupportedFormats",
-                        pfun_input_GetSupportedFormats);
-  LIBXMOUNT_LOAD_SYMBOL("LibXmount_Input_GetFunctions",
-                        pfun_input_GetFunctions);
+  XMOUNTINPUT_LOADLIBS__LOAD_SYMBOL("LibXmount_Input_GetSupportedFormats",
+                                    pfun_input_GetSupportedFormats);
+  XMOUNTINPUT_LOADLIBS__LOAD_SYMBOL("LibXmount_Input_GetFunctions",
+                                    pfun_input_GetFunctions);
 
   // Construct new entry for our library list
   XMOUNT_MALLOC(p_input_lib,pts_XmountInputLib,sizeof(ts_XmountInputLib));
@@ -292,9 +297,9 @@ te_XmountInput_Error XmountInput_AddLibrary(pts_XmountInputHandle p_h,
   {
     LOG_DEBUG("Missing implemention of one or more functions in lib %s!\n",
               p_lib_name);
-    free(p_input_lib->p_supported_input_types);
-    free(p_input_lib->p_name);
-    free(p_input_lib);
+    XMOUNT_FREE(p_input_lib->p_supported_input_types);
+    XMOUNT_FREE(p_input_lib->p_name);
+    XMOUNT_FREE(p_input_lib);
     dlclose(p_libxmount);
     return e_XmountInput_Error_MissingLibraryFunction;
   }
@@ -566,10 +571,129 @@ te_XmountInput_Error XmountInput_SetInputSizeLimit(pts_XmountInputHandle p_h,
  * XmountInput_Open
  */
 te_XmountInput_Error XmountInput_Open(pts_XmountInputHandle p_h) {
+  int ret=0;
+  const char *p_err_msg;
+  te_XmountInput_Error input_ret=e_XmountInput_Error_None;
+
   // Params check
   if(p_h==NULL) return e_XmountInput_Error_InvalidHandle;
 
-  // TODO: Implement
+  for(uint64_t i=0;i<p_h->images_count;i++) {
+    if(p_h->debug==TRUE) {
+      if(p_h->pp_images[i]->files_count==1) {
+        LOG_DEBUG("Loading image file \"%s\"...\n",
+                  p_h->pp_images[i]->pp_files[0]);
+      } else {
+        LOG_DEBUG("Loading image files \"%s .. %s\"...\n",
+                  p_h->pp_images[i]->pp_files[0],
+                  p_h->pp_images[i]->
+                    pp_files[p_h->pp_images[i]->files_count-1]);
+      }
+    }
+
+    // Find input lib
+    input_ret=XmountInput_FindLib(p_h,p_h->pp_images[i]);
+    if(input_ret!=e_XmountInput_Error_None) {
+      LOG_ERROR("Unable to find input library for input image format '%s' "
+                  "of input image '%s': Error code %u!\n",
+                p_h->pp_images[i]->p_type,
+                p_h->pp_images[i]->pp_files[0],
+                input_ret);
+      return input_ret;
+    }
+
+    // Init input image handle
+    ret=p_h->pp_images[i]->p_functions->
+          CreateHandle(&(p_h->pp_images[i]->p_handle),
+                       p_h->pp_images[i]->p_type,
+                       p_h->debug);
+    if(ret!=0) {
+      LOG_ERROR("Unable to init input handle for input image '%s': %s!\n",
+                p_h->pp_images[i]->pp_files[0],
+                p_h->pp_images[i]->p_functions->
+                  GetErrorMessage(ret));
+      return e_XmountInput_Error_FailedCreatingImageHandle;
+    }
+
+    // Parse input lib specific options
+    if(p_h->pp_lib_params!=NULL) {
+      ret=p_h->pp_images[i]->p_functions->
+            OptionsParse(p_h->pp_images[i]->p_handle,
+                         p_h->lib_params_count,
+                         p_h->pp_lib_params,
+                         &p_err_msg);
+      if(ret!=0) {
+        if(p_err_msg!=NULL) {
+          LOG_ERROR("Unable to parse input library specific options for image "
+                      "'%s': %s: %s!\n",
+                    p_h->pp_images[i]->pp_files[0],
+                    p_h->pp_images[i]->p_functions->
+                      GetErrorMessage(ret),
+                    p_err_msg);
+          p_h->pp_images[i]->p_functions->FreeBuffer(p_err_msg);
+        } else {
+          LOG_ERROR("Unable to parse input library specific options for image "
+                      "'%s': %s!\n",
+                    p_h->pp_images[i]->pp_files[0],
+                    p_h->pp_images[i]->p_functions->
+                      GetErrorMessage(ret));
+        }
+        return e_XmountInput_Error_FailedParsingLibParams;
+      }
+    }
+
+    // Open input image
+    ret=p_h->pp_images[i]->p_functions->Open(p_h->pp_images[i]->p_handle,
+                                             (const char**)(p_h->pp_images[i]->
+                                               pp_files),
+                                             p_h->pp_images[i]->files_count);
+    if(ret!=0) {
+      LOG_ERROR("Unable to open input image file '%s': %s!\n",
+                p_h->pp_images[i]->pp_files[0],
+                p_h->pp_images[i]->p_functions->
+                  GetErrorMessage(ret));
+      return e_XmountInput_Error_FailedOpeningImage;
+    }
+
+    // Determine input image size
+    ret=p_h->pp_images[i]->p_functions->Size(p_h->pp_images[i]->p_handle,
+                                             &(p_h->pp_images[i]->size));
+    if(ret!=0) {
+      LOG_ERROR("Unable to determine size of input image '%s': %s!\n",
+                p_h->pp_images[i]->pp_files[0],
+                p_h->pp_images[i]->
+                  p_functions->GetErrorMessage(ret));
+      return e_XmountInput_Error_FailedGettingImageSize;
+    }
+
+    // If an offset was specified, check it against offset and change size
+    if(p_h->image_offset!=0) {
+      if(p_h->image_offset>p_h->pp_images[i]->size) {
+        LOG_ERROR("The specified offset is larger than the size of the input "
+                    "image '%s'! (%" PRIu64 " > %" PRIu64 ")\n",
+                  p_h->pp_images[i]->pp_files[0],
+                  p_h->image_offset,
+                  p_h->pp_images[i]->size);
+        return e_XmountInput_Error_OffsetExceedsImageSize;
+      }
+      p_h->pp_images[i]->size-=p_h->image_offset;
+    }
+
+    // If a size limit was specified, check it and change size
+    if(p_h->image_size_limit!=0) {
+      if(p_h->pp_images[i]->size<p_h->image_size_limit) {
+        LOG_ERROR("The specified size limit is larger than the size of the "
+                    "input image '%s'! (%" PRIu64 " > %" PRIu64 ")\n",
+                  p_h->pp_images[i]->pp_files[0],
+                  p_h->image_size_limit,
+                  p_h->pp_images[i]->size);
+        return e_XmountInput_Error_SizelimitExceedsImageSize;
+      }
+      p_h->pp_images[i]->size=p_h->image_size_limit;
+    }
+
+    LOG_DEBUG("Input image loaded successfully\n")
+  }
 
   return e_XmountInput_Error_None;
 }
@@ -652,21 +776,58 @@ te_XmountInput_Error XmountInput_ReadData(pts_XmountInputHandle p_h,
                                           uint64_t count,
                                           uint64_t *p_read)
 {
+  uint64_t to_read=0;
   int ret=0;
+  int read_errno=0;
+  pts_XmountInputImage p_image=NULL;
 
   // Params check
   if(p_h==NULL) return e_XmountInput_Error_InvalidHandle;
   if(image_nr>=p_h->images_count) return e_XmountInput_Error_NoSuchImage;
   if(p_buf==NULL) return e_XmountInput_Error_InvalidBuffer;
+  p_image=p_h->pp_images[image_nr];
 
-  // TODO: Implement
-/*
-  ret=ReadInputImageData(glob_xmount.input.pp_images[image],
-                            p_buf,
-                            offset,
-                            count,
-                            p_read);
-*/
+  LOG_DEBUG("Reading %zu bytes at offset %zu from input image '%s'\n",
+            count,
+            offset,
+            p_image->pp_files[0]);
+
+  // Make sure we aren't reading past EOF of image file
+  if(offset>=p_image->size) {
+    // Offset is beyond image size
+    LOG_DEBUG("Offset %zu is at / beyond size of input image '%s'\n",
+              offset,
+              p_image->pp_files[0]);
+    *p_read=0;
+    return 0;
+  }
+  if(offset+count>p_image->size) {
+    // Attempt to read data past EOF of image file
+    to_read=p_image->size-offset;
+    LOG_DEBUG("Attempt to read data past EOF of input image '%s'. "
+                "Correcting size from %zu to %zu\n",
+              p_image->pp_files[0],
+              count,
+              to_read);
+  } else to_read=count;
+
+  // Read data from image file (adding input image offset if one was specified)
+  ret=p_image->p_functions->Read(p_image->p_handle,
+                                 p_buf,
+                                 offset+p_h->image_offset,
+                                 to_read,
+                                 p_read,
+                                 &read_errno);
+  if(ret!=0) {
+    LOG_ERROR("Couldn't read %zu bytes at offset %zu from input image "
+                "'%s': %s: Error code %u!\n",
+              to_read,
+              offset,
+              p_image->pp_files[0],
+              p_image->p_functions->GetErrorMessage(ret),
+              read_errno);
+    return e_XmountInput_Error_FailedReadingData;
+  }
 
   return e_XmountInput_Error_None;
 }
@@ -729,8 +890,8 @@ te_XmountInput_Error XmountInput_GetInfoFileContent(pts_XmountInputHandle p_h,
 /*
  * FindInputLib
  */
-te_XmountInput_Error FindInputLib(pts_XmountInputHandle p_h,
-                                  pts_XmountInputImage p_input_image)
+te_XmountInput_Error XmountInput_FindLib(pts_XmountInputHandle p_h,
+                                         pts_XmountInputImage p_input_image)
 {
   char *p_buf;
 
@@ -758,69 +919,3 @@ te_XmountInput_Error FindInputLib(pts_XmountInputHandle p_h,
   // No library supporting input type found
   return e_XmountInput_Error_UnsupportedFormat;
 }
-
-//! Read data from input image
-/*!
- * \param p_image Image from which to read data
- * \param p_buf Pointer to buffer to write read data to (must be preallocated!)
- * \param offset Offset at which data should be read
- * \param size Size of data which should be read (size of buffer)
- * \param p_read Number of read bytes on success
- * \return 0 on success, negated error code on error
- */
-/*
-int ReadInputImageData(pts_InputImage p_image,
-                       char *p_buf,
-                       off_t offset,
-                       size_t size,
-                       size_t *p_read)
-{
-  int ret;
-  size_t to_read=0;
-  int read_errno=0;
-
-  LOG_DEBUG("Reading %zu bytes at offset %zu from input image '%s'\n",
-            size,
-            offset,
-            p_image->pp_files[0]);
-
-  // Make sure we aren't reading past EOF of image file
-  if(offset>=p_image->size) {
-    // Offset is beyond image size
-    LOG_DEBUG("Offset %zu is at / beyond size of input image '%s'\n",
-              offset,
-              p_image->pp_files[0]);
-    *p_read=0;
-    return 0;
-  }
-  if(offset+size>p_image->size) {
-    // Attempt to read data past EOF of image file
-    to_read=p_image->size-offset;
-    LOG_DEBUG("Attempt to read data past EOF of input image '%s'. "
-                "Correcting size from %zu to %zu\n",
-              p_image->pp_files[0],
-              size,
-              to_read);
-  } else to_read=size;
-
-  // Read data from image file (adding input image offset if one was specified)
-  ret=p_image->p_functions->Read(p_image->p_handle,
-                                 p_buf,
-                                 offset+glob_xmount.input.image_offset,
-                                 to_read,
-                                 p_read,
-                                 &read_errno);
-  if(ret!=0) {
-    LOG_ERROR("Couldn't read %zu bytes at offset %zu from input image "
-                "'%s': %s!\n",
-              to_read,
-              offset,
-              p_image->pp_files[0],
-              p_image->p_functions->GetErrorMessage(ret));
-    if(read_errno==0) return -EIO;
-    else return (read_errno*(-1));
-  }
-
-  return 0;
-}
-*/

@@ -71,7 +71,7 @@
 /*
  * Misc
  */
-static void InitResources();
+static int InitResources();
 static void FreeResources();
 static void PrintUsage(char*);
 static void CheckFuseSettings();
@@ -86,10 +86,8 @@ static int InitInfoFile();
  * Lib related
  */
 static int LoadLibs();
-static int FindInputLib(pts_InputImage);
 static int FindMorphingLib();
 static int FindOutputLib();
-static int SplitLibraryParameters(char*, uint32_t*, pts_LibXmountOptions**);
 /*
  * Functions exported to LibXmount_Morphing
  */
@@ -135,21 +133,25 @@ static void PrintUsage(char *p_prog_name) {
            "May be specified multiple times.\n");
   printf("      <itype> can be ");
 
+#define PRINTUSAGE__LIST_SUPP_LIB_TYPES(fun,handle,ret_ok) do { \
+  first=1;                                                      \
+  if(fun(handle,&p_buf)==ret_ok) {                              \
+    while(*p_buf!='\0') {                                       \
+      if(first==1) {                                            \
+        printf("\"%s\"",p_buf);                                 \
+        first=0;                                                \
+      } else printf(", \"%s\"",p_buf);                          \
+      p_buf+=(strlen(p_buf)+1);                                 \
+    }                                                           \
+    free(p_buf);                                                \
+  }                                                             \
+  printf(".\n");                                                \
+} while(0)
+
   // List supported input formats
-  first=1;
-  if(XmountInput_GetSupportedFormats(glob_xmount.h_input,
-                                     &p_buf)==e_XmountInput_Error_None)
-  {
-    while(*p_buf!='\0') {
-      if(first==1) {
-        printf("\"%s\"",p_buf);
-        first=0;
-      } else printf(", \"%s\"",p_buf);
-      p_buf+=(strlen(p_buf)+1);
-    }
-    free(p_buf);
-  }
-  printf(".\n");
+  PRINTUSAGE__LIST_SUPP_LIB_TYPES(XmountInput_GetSupportedFormats,
+                                  glob_xmount.h_input,
+                                  e_XmountInput_Error_None);
 
   printf("      <ifile> specifies the source file. If your image is split into "
            "multiple files, you have to specify them all!\n");
@@ -162,18 +164,9 @@ static void PrintUsage(char *p_prog_name) {
   printf("      <mtype> can be ");
 
   // List supported morphing functions
-  first=1;
-  for(uint32_t i=0;i<glob_xmount.morphing.libs_count;i++) {
-    p_buf=glob_xmount.morphing.pp_libs[i]->p_supported_morphing_types;
-    while(*p_buf!='\0') {
-      if(first==1) {
-        printf("\"%s\"",p_buf);
-        first=0;
-      } else printf(", \"%s\"",p_buf);
-      p_buf+=(strlen(p_buf)+1);
-    }
-  }
-  printf(".\n");
+  PRINTUSAGE__LIST_SUPP_LIB_TYPES(XmountMorphing_GetSupportedTypes,
+                                  glob_xmount.h_morphing,
+                                  e_XmountMorphError_None);
 
   printf("    --morphopts <mopts> : Specify morphing library specific "
            "options.\n");
@@ -230,27 +223,21 @@ static void PrintUsage(char *p_prog_name) {
            "options are listed below.\n");
   printf("\n");
 
+#define PRINTUSAGE__LIST_LIB_OPT_HELP(fun,handle,ret_ok) do { \
+  if(fun(handle,&p_buf)==ret_ok) {                            \
+    printf("%s",p_buf);                                       \
+    free(p_buf);                                              \
+  }                                                           \
+} while(0)
+
   // List input, morphing and output lib options
-  if(XmountInput_GetOptionsHelpText(glob_xmount.h_input,
-                                    &p_buf)==e_XmountInput_Error_None)
-  {
-    printf("%s",p_buf);
-    free(p_buf);
-  }
-  for(uint32_t i=0;i<glob_xmount.morphing.libs_count;i++) {
-    ret=glob_xmount.morphing.pp_libs[i]->
-          lib_functions.OptionsHelp((const char**)&p_buf);
-    if(ret!=0) {
-      LOG_ERROR("Unable to get options help for library '%s': %s!\n",
-                glob_xmount.morphing.pp_libs[i]->p_name,
-                glob_xmount.morphing.pp_libs[i]->
-                  lib_functions.GetErrorMessage(ret));
-    }
-    if(p_buf==NULL) continue;
-    printf("  - %s\n",glob_xmount.morphing.pp_libs[i]->p_name);
-    printf("%s",p_buf);
-    printf("\n");
-  }
+  PRINTUSAGE__LIST_LIB_OPT_HELP(XmountInput_GetOptionsHelpText,
+                                glob_xmount.h_input,
+                                e_XmountInput_Error_None);
+  PRINTUSAGE__LIST_LIB_OPT_HELP(XmountMorphing_GetOptionsHelpText,
+                                glob_xmount.h_morphing,
+                                e_XmountMorphError_None);
+
   for(uint32_t i=0;i<glob_xmount.output.libs_count;i++) {
     ret=glob_xmount.output.pp_libs[i]->
           lib_functions.OptionsHelp((const char**)&p_buf);
@@ -265,6 +252,10 @@ static void PrintUsage(char *p_prog_name) {
     printf("%s",p_buf);
     printf("\n");
   }
+
+#undef PRINTUSAGE__LIST_LIB_OPT_HELP
+#undef PRINTUSAGE__LIST_SUPPORTED_LIB_OPTS
+
 }
 
 //! Check fuse settings
@@ -375,6 +366,7 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
   char **pp_buf;
   int ret;
   te_XmountInput_Error input_ret=e_XmountInput_Error_None;
+  te_XmountMorphError morph_ret=e_XmountMorphError_None;
 
   // add pp_argv[0] to FUSE's argv
   XMOUNT_MALLOC(glob_xmount.pp_fuse_argv,char**,sizeof(char*));
@@ -394,6 +386,12 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
                       pp_argv[i])
         glob_xmount.fuse_argc++;
         glob_xmount.debug=TRUE;
+        input_ret=XmountInput_EnableDebugging(glob_xmount.h_input);
+        if(input_ret!=e_XmountInput_Error_None) {
+          LOG_ERROR("Unable to enable input debugging: Error code %u!\n",
+                    input_ret);
+          return FALSE;
+        }
       } else if(strcmp(pp_argv[i],"-h")==0) {
         // Print help message
         PrintUsage(pp_argv[0]);
@@ -515,10 +513,11 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
         // Set morphing lib to use
         if((i+1)<argc) {
           i++;
-          if(glob_xmount.morphing.p_morph_type==NULL) {
-            XMOUNT_STRSET(glob_xmount.morphing.p_morph_type,pp_argv[i]);
-          } else {
-            LOG_ERROR("You can only specify --morph once!")
+          morph_ret=XmountMorphing_SetType(glob_xmount.h_morphing,
+                                           pp_argv[i]);
+          if(morph_ret!=e_XmountMorphError_None) {
+            LOG_ERROR("Unable to set morphing type: Error code %u!\n",
+                      morph_ret);
             return FALSE;
           }
         } else {
@@ -529,18 +528,12 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
         // Set morphing lib options
         if((i+1)<argc) {
           i++;
-          if(glob_xmount.morphing.pp_lib_params==NULL) {
-            if(SplitLibraryParameters(pp_argv[i],
-                                      &(glob_xmount.morphing.lib_params_count),
-                                      &(glob_xmount.morphing.pp_lib_params)
-                                     )==FALSE)
-            {
-              LOG_ERROR("Unable to parse morphing library options '%s'!\n",
-                        pp_argv[i]);
-              return FALSE;
-            }
-          } else {
-            LOG_ERROR("You can only specify --morphopts once!")
+          morph_ret=XmountMorphing_SetOptions(glob_xmount.h_morphing,
+                                              pp_argv[i]);
+          if(morph_ret!=e_XmountMorphError_None) {
+            LOG_ERROR("Unable to parse morphing library options: "
+                        "Error code %u!\n",
+                      morph_ret);
             return FALSE;
           }
         } else {
@@ -584,10 +577,10 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
         if((i+1)<argc) {
           i++;
           if(glob_xmount.output.pp_lib_params==NULL) {
-            if(SplitLibraryParameters(pp_argv[i],
-                                      &(glob_xmount.output.lib_params_count),
-                                      &(glob_xmount.output.pp_lib_params)
-                                     )==FALSE)
+            if(XmountLib_SplitLibParams(pp_argv[i],
+                                        &(glob_xmount.output.lib_params_count),
+                                        &(glob_xmount.output.pp_lib_params)
+                                       )==FALSE)
             {
               LOG_ERROR("Unable to parse output library options '%s'!\n",
                         pp_argv[i]);
@@ -643,30 +636,29 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
         printf("  compile timestamp: %s %s\n",__DATE__,__TIME__);
         printf("  gcc version: %s\n",__VERSION__);
 #endif
-        printf("  loaded input libraries:\n");
-        input_ret=XmountInput_GetLibsInfoText(glob_xmount.h_input,&p_buf);
-        if(p_buf==NULL || input_ret!=e_XmountInput_Error_None) {
-          LOG_ERROR("Unable to get input library infos: Error code %u!\n",
-                    input_ret);
-          return FALSE;
-        }
-        printf("%s",p_buf);
-        XMOUNT_FREE(p_buf);
-        printf("  loaded morphing libraries:\n");
-        for(uint32_t ii=0;ii<glob_xmount.morphing.libs_count;ii++) {
-          printf("    - %s supporting ",
-                 glob_xmount.morphing.pp_libs[ii]->p_name);
-          p_buf=glob_xmount.morphing.pp_libs[ii]->p_supported_morphing_types;
-          first=TRUE;
-          while(*p_buf!='\0') {
-            if(first) {
-              printf("\"%s\"",p_buf);
-              first=FALSE;
-            } else printf(", \"%s\"",p_buf);
-            p_buf+=(strlen(p_buf)+1);
-          }
-          printf("\n");
-        }
+
+#define PARSECMDLINE__PRINT_LOADED_LIBINFO(text,libret,fun,handle,err_ok) do { \
+  printf(text);                                                                \
+  libret=fun(handle,&p_buf);                                                   \
+  if(p_buf==NULL || libret!=err_ok) {                                          \
+    LOG_ERROR("Unable to get library infos: Error code %u!\n",libret);         \
+    return FALSE;                                                              \
+  }                                                                            \
+  printf("%s",p_buf);                                                          \
+  XMOUNT_FREE(p_buf);                                                          \
+} while(0)
+
+        PARSECMDLINE__PRINT_LOADED_LIBINFO("  loaded input libraries:\n",
+                                           input_ret,
+                                           XmountInput_GetLibsInfoText,
+                                           glob_xmount.h_input,
+                                           e_XmountInput_Error_None);
+        PARSECMDLINE__PRINT_LOADED_LIBINFO("  loaded morphing libraries:\n",
+                                           morph_ret,
+                                           XmountMorphing_GetLibsInfoText,
+                                           glob_xmount.h_morphing,
+                                           e_XmountMorphError_None);
+
         printf("  loaded output libraries:\n");
         for(uint32_t ii=0;ii<glob_xmount.output.libs_count;ii++) {
           printf("    - %s supporting ",
@@ -743,6 +735,8 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
       }
     }
   }
+
+#undef PARSECMDLINE__PRINT_LOADED_LIBINFO
 
   return TRUE;
 }
@@ -832,8 +826,9 @@ static int CalculateInputImageHash(uint64_t *p_hash_low,
  */
 static int InitInfoFile() {
   int ret;
-  te_XmountInput_Error input_ret=e_XmountInput_Error_None;
   char *p_buf;
+  te_XmountInput_Error input_ret=e_XmountInput_Error_None;
+  te_XmountMorphError morph_ret=e_XmountMorphError_None;
 
   // Start with static input header
   XMOUNT_MALLOC(glob_xmount.output.p_info_file,
@@ -843,34 +838,35 @@ static int InitInfoFile() {
           IMAGE_INFO_INPUT_HEADER,
           strlen(IMAGE_INFO_INPUT_HEADER)+1);
 
+#define INITINFOFILE__GET_CONTENT(libret,fun,handle,err_ok,err_msg) do { \
+  libret=fun(handle,&p_buf);                                             \
+  if(p_buf==NULL || libret!=err_ok) {                                    \
+    LOG_ERROR(err_msg "Error code %u!\n",libret);                        \
+    return FALSE;                                                        \
+  }                                                                      \
+  XMOUNT_STRAPP(glob_xmount.output.p_info_file,p_buf);                   \
+  XMOUNT_FREE(p_buf);                                                    \
+} while(0)
+
   // Get and add infos from input lib(s)
-  input_ret=XmountInput_GetInfoFileContent(glob_xmount.h_cache,&p_buf);
-  if(p_buf==NULL || input_ret!=e_XmountInput_Error_None) {
-    LOG_ERROR("Unable to get info file content for input image(s): "
-                "Error code %u!\n",
-              input_ret);
-    return FALSE;
-  }
-  XMOUNT_STRAPP(glob_xmount.output.p_info_file,p_buf);
-  XMOUNT_FREE(p_buf);
+  INITINFOFILE__GET_CONTENT(input_ret,
+                            XmountInput_GetInfoFileContent,
+                            glob_xmount.h_input,
+                            e_XmountInput_Error_None,
+                            "Unable to get info file content from input lib: ");
 
   // Add static morphing header
   XMOUNT_STRAPP(glob_xmount.output.p_info_file,IMAGE_INFO_MORPHING_HEADER);
 
   // Get and add infos from morphing lib
-  ret=glob_xmount.morphing.p_functions->
-        GetInfofileContent(glob_xmount.morphing.p_handle,(const char**)&p_buf);
-  if(ret!=0) {
-    LOG_ERROR("Unable to get info file content from morphing lib: %s!\n",
-              glob_xmount.morphing.p_functions->GetErrorMessage(ret));
-    return FALSE;
-  }
-  if(p_buf!=NULL) {
-    XMOUNT_STRAPP(glob_xmount.output.p_info_file,p_buf);
-    glob_xmount.morphing.p_functions->FreeBuffer(p_buf);
-  } else {
-    XMOUNT_STRAPP(glob_xmount.output.p_info_file,"None\n");
-  }
+  INITINFOFILE__GET_CONTENT(morph_ret,
+                            XmountMorphing_GetInfoFileContent,
+                            glob_xmount.h_morphing,
+                            e_XmountMorphError_None,
+                            "Unable to get info file content from morphing "
+                              "lib: ");
+
+#undef INITINFOFILE__GET_CONTENT
 
   return TRUE;
 }
@@ -885,9 +881,6 @@ static int LoadLibs() {
   int base_library_path_len=0;
   char *p_library_path=NULL;
   void *p_libxmount=NULL;
-  t_LibXmount_Morphing_GetApiVersion pfun_morphing_GetApiVersion;
-  t_LibXmount_Morphing_GetSupportedTypes pfun_morphing_GetSupportedTypes;
-  t_LibXmount_Morphing_GetFunctions pfun_morphing_GetFunctions;
   t_LibXmount_Output_GetApiVersion pfun_output_GetApiVersion;
   t_LibXmount_Output_GetSupportedFormats pfun_output_GetSupportedFormats;
   t_LibXmount_Output_GetFunctions pfun_output_GetFunctions;
@@ -895,9 +888,10 @@ static int LoadLibs() {
   const char *p_buf;
   uint32_t supported_formats_len=0;
   uint32_t input_lib_count=0;
-  pts_MorphingLib p_morphing_lib=NULL;
+  uint32_t morphing_lib_count=0;
   pts_OutputLib p_output_lib=NULL;
   te_XmountInput_Error input_ret=e_XmountInput_Error_None;
+  te_XmountMorphError morph_ret=e_XmountMorphError_None;
 
   LOG_DEBUG("Searching for xmount libraries in '%s'.\n",
             XMOUNT_LIBRARY_PATH);
@@ -963,86 +957,19 @@ static int LoadLibs() {
                   input_ret);
         continue;
       }
-    } if(strncmp(p_dirent->d_name,"libxmount_morphing_",19)==0) {
+    } if(strncmp(p_dirent->d_name,
+                 XMOUNT_MORPHING_LIBRARY_NAMING_SCHEME,
+                 strlen(XMOUNT_MORPHING_LIBRARY_NAMING_SCHEME))==0)
+    {
       // Found possible morphing lib. Try to load it
-      LIBXMOUNT_LOAD(p_library_path);
-
-      // Load library symbols
-      LIBXMOUNT_LOAD_SYMBOL("LibXmount_Morphing_GetApiVersion",
-                            pfun_morphing_GetApiVersion);
-
-      // Check library's API version
-      if(pfun_morphing_GetApiVersion()!=LIBXMOUNT_MORPHING_API_VERSION) {
-        LOG_DEBUG("Failed! Wrong API version.\n");
-        LOG_ERROR("Unable to load morphing library '%s'. Wrong API version\n",
-                  p_library_path);
-        dlclose(p_libxmount);
+      morph_ret=XmountMorphing_AddLibrary(glob_xmount.h_morphing,
+                                          p_dirent->d_name);
+      if(morph_ret!=e_XmountMorphError_None) {
+        LOG_ERROR("Unable to add morphing library '%s': Error code %u!\n",
+                  p_dirent->d_name,
+                  morph_ret);
         continue;
       }
-
-      LIBXMOUNT_LOAD_SYMBOL("LibXmount_Morphing_GetSupportedTypes",
-                            pfun_morphing_GetSupportedTypes);
-      LIBXMOUNT_LOAD_SYMBOL("LibXmount_Morphing_GetFunctions",
-                            pfun_morphing_GetFunctions);
-
-      // Construct new entry for our library list
-      XMOUNT_MALLOC(p_morphing_lib,pts_MorphingLib,sizeof(ts_MorphingLib));
-      // Initialize lib_functions structure to NULL
-      memset(&(p_morphing_lib->lib_functions),
-             0,
-             sizeof(ts_LibXmountMorphingFunctions));
-
-      // Set name and handle
-      XMOUNT_STRSET(p_morphing_lib->p_name,p_dirent->d_name);
-      p_morphing_lib->p_lib=p_libxmount;
-
-      // Get and set supported types
-      p_supported_formats=pfun_morphing_GetSupportedTypes();
-      supported_formats_len=0;
-      p_buf=p_supported_formats;
-      while(*p_buf!='\0') {
-        supported_formats_len+=(strlen(p_buf)+1);
-        p_buf+=(strlen(p_buf)+1);
-      }
-      supported_formats_len++;
-      XMOUNT_MALLOC(p_morphing_lib->p_supported_morphing_types,
-                    char*,
-                    supported_formats_len);
-      memcpy(p_morphing_lib->p_supported_morphing_types,
-             p_supported_formats,
-             supported_formats_len);
-
-      // Get, set and check lib_functions
-      pfun_morphing_GetFunctions(&(p_morphing_lib->lib_functions));
-      if(p_morphing_lib->lib_functions.CreateHandle==NULL ||
-         p_morphing_lib->lib_functions.DestroyHandle==NULL ||
-         p_morphing_lib->lib_functions.Morph==NULL ||
-         p_morphing_lib->lib_functions.Size==NULL ||
-         p_morphing_lib->lib_functions.Read==NULL ||
-         p_morphing_lib->lib_functions.OptionsHelp==NULL ||
-         p_morphing_lib->lib_functions.OptionsParse==NULL ||
-         p_morphing_lib->lib_functions.GetInfofileContent==NULL ||
-         p_morphing_lib->lib_functions.GetErrorMessage==NULL ||
-         p_morphing_lib->lib_functions.FreeBuffer==NULL)
-      {
-        LOG_DEBUG("Missing implemention of one or more functions in lib %s!\n",
-                  p_dirent->d_name);
-        free(p_morphing_lib->p_supported_morphing_types);
-        free(p_morphing_lib->p_name);
-        free(p_morphing_lib);
-        dlclose(p_libxmount);
-        continue;
-      }
-
-      // Add entry to the input library list
-      XMOUNT_REALLOC(glob_xmount.morphing.pp_libs,
-                     pts_MorphingLib*,
-                     sizeof(pts_MorphingLib)*
-                       (glob_xmount.morphing.libs_count+1));
-      glob_xmount.morphing.pp_libs[glob_xmount.morphing.libs_count++]=
-        p_morphing_lib;
-
-      LOG_DEBUG("Morphing library '%s' loaded successfully\n",p_dirent->d_name);
     } if(strncmp(p_dirent->d_name,"libxmount_output_",17)==0) {
       // Found possible output lib. Try to load it
       LIBXMOUNT_LOAD(p_library_path);
@@ -1139,17 +1066,24 @@ static int LoadLibs() {
     LOG_ERROR("Unable to get input library count: Error code %u!\n",input_ret);
     return FALSE;
   }
+  morph_ret=XmountMorphing_GetLibraryCount(glob_xmount.h_morphing,
+                                           &morphing_lib_count);
+  if(morph_ret!=e_XmountMorphError_None) {
+    LOG_ERROR("Unable to get morphing library count: Error code %u!\n",
+              input_ret);
+    return FALSE;
+  }
 
   LOG_DEBUG("A total of %u input libs, %u morphing libs and %u output libs "
               "were loaded.\n",
             input_lib_count,
-            glob_xmount.morphing.libs_count,
+            morphing_lib_count,
             glob_xmount.output.libs_count);
 
   free(p_library_path);
   closedir(p_dir);
   return ((input_lib_count>0 &&
-           glob_xmount.morphing.libs_count>0 &&
+           morphing_lib_count>0 &&
            glob_xmount.output.libs_count>0) ? TRUE : FALSE);
 }
 
@@ -1221,13 +1155,19 @@ static int FindOutputLib() {
   return FALSE;
 }
 
-static void InitResources() {
+static int InitResources() {
+  te_XmountInput_Error input_ret=e_XmountInput_Error_None;
+
   // Args
   glob_xmount.args.overwrite_cache=FALSE;
   glob_xmount.args.p_cache_file=NULL;
 
   // Input
-  glob_xmount.h_input=NULL;
+  input_ret=XmountInput_CreateHandle(&(glob_xmount.h_input));
+  if(input_ret!=e_XmountInput_Error_None) {
+    LOG_ERROR("Unable to create input handle: Error code %u!\n",input_ret);
+    return FALSE;
+  }
 
   // Morphing
   glob_xmount.morphing.libs_count=0;
@@ -1269,9 +1209,10 @@ static void InitResources() {
   glob_xmount.pp_fuse_argv=NULL;
   glob_xmount.p_mountpoint=NULL;
   glob_xmount.p_first_input_image_name=NULL;
-  // TODO: Move where needed
-  //glob_xmount.image_hash_lo=0;
-  //glob_xmount.image_hash_hi=0;
+  glob_xmount.image_hash_lo=0;
+  glob_xmount.image_hash_hi=0;
+
+  return TRUE;
 }
 
 /*
@@ -1526,10 +1467,12 @@ static int LibXmount_Output_Write(char *p_buf,
  * Main
  ******************************************************************************/
 int main(int argc, char *argv[]) {
+  uint64_t input_image_count=0;
   struct stat file_stat;
   int ret;
   int fuse_ret;
   char *p_err_msg;
+  te_XmountInput_Error input_ret=e_XmountInput_Error_None;
   te_XmountCache_Error cache_ret=e_XmountCache_Error_None;
 
   // Set implemented FUSE functions
@@ -1553,7 +1496,10 @@ int main(int argc, char *argv[]) {
   setbuf(stderr,NULL);
 
   // Init glob_xmount
-  InitResources();
+  if(InitResources()==FALSE) {
+    LOG_ERROR("Unable to initialize internal resources!\n");
+    return 1;
+  }
 
   // Load input, morphing and output libs
   if(!LoadLibs()) {
@@ -1572,7 +1518,12 @@ int main(int argc, char *argv[]) {
   }
 
   // Check command line options
-  if(glob_xmount.input.images_count==0) {
+  input_ret=XmountInput_GetImageCount(glob_xmount.h_input,&input_image_count);
+  if(input_ret!=e_XmountInput_Error_None) {
+    LOG_ERROR("Unable to get input image count: Error code %u!\n",input_ret);
+    return 1;
+  }
+  if(input_image_count==0) {
     LOG_ERROR("No --in command line option specified!\n")
     PrintUsage(argv[0]);
     FreeResources();
@@ -1617,134 +1568,11 @@ int main(int argc, char *argv[]) {
   pthread_mutex_init(&(glob_xmount.mutex_info_read),NULL);
 
   // Load input images
-  for(uint64_t i=0;i<glob_xmount.input.images_count;i++) {
-    if(glob_xmount.debug==TRUE) {
-      if(glob_xmount.input.pp_images[i]->files_count==1) {
-        LOG_DEBUG("Loading image file \"%s\"...\n",
-                  glob_xmount.input.pp_images[i]->pp_files[0])
-      } else {
-        LOG_DEBUG("Loading image files \"%s .. %s\"...\n",
-                  glob_xmount.input.pp_images[i]->pp_files[0],
-                  glob_xmount.input.pp_images[i]->
-                    pp_files[glob_xmount.input.pp_images[i]->files_count-1])
-      }
-    }
-
-    // Find input lib
-    if(!FindInputLib(glob_xmount.input.pp_images[i])) {
-      LOG_ERROR("Unknown input image type '%s' for input image '%s'!\n",
-                glob_xmount.input.pp_images[i]->p_type,
-                glob_xmount.input.pp_images[i]->pp_files[0])
-      PrintUsage(argv[0]);
-      FreeResources();
-      return 1;
-    }
-
-    // Init input image handle
-    ret=glob_xmount.input.pp_images[i]->p_functions->
-          CreateHandle(&(glob_xmount.input.pp_images[i]->p_handle),
-                       glob_xmount.input.pp_images[i]->p_type,
-                       glob_xmount.debug);
-    if(ret!=0) {
-      LOG_ERROR("Unable to init input handle for input image '%s': %s!\n",
-                glob_xmount.input.pp_images[i]->pp_files[0],
-                glob_xmount.input.pp_images[i]->p_functions->
-                  GetErrorMessage(ret));
-      FreeResources();
-      return 1;
-    }
-
-    // Parse input lib specific options
-    if(glob_xmount.input.pp_lib_params!=NULL) {
-      ret=glob_xmount.input.pp_images[i]->p_functions->
-            OptionsParse(glob_xmount.input.pp_images[i]->p_handle,
-                         glob_xmount.input.lib_params_count,
-                         glob_xmount.input.pp_lib_params,
-                         (const char**)&p_err_msg);
-      if(ret!=0) {
-        if(p_err_msg!=NULL) {
-          LOG_ERROR("Unable to parse input library specific options for image "
-                      "'%s': %s: %s!\n",
-                    glob_xmount.input.pp_images[i]->pp_files[0],
-                    glob_xmount.input.pp_images[i]->p_functions->
-                      GetErrorMessage(ret),
-                    p_err_msg);
-          glob_xmount.input.pp_images[i]->p_functions->FreeBuffer(p_err_msg);
-          FreeResources();
-          return 1;
-        } else {
-          LOG_ERROR("Unable to parse input library specific options for image "
-                      "'%s': %s!\n",
-                    glob_xmount.input.pp_images[i]->pp_files[0],
-                    glob_xmount.input.pp_images[i]->p_functions->
-                      GetErrorMessage(ret));
-          FreeResources();
-          return 1;
-        }
-      }
-    }
-
-    // Open input image
-    ret=
-      glob_xmount.input.pp_images[i]->
-        p_functions->
-          Open(glob_xmount.input.pp_images[i]->p_handle,
-               (const char**)(glob_xmount.input.pp_images[i]->pp_files),
-               glob_xmount.input.pp_images[i]->files_count);
-    if(ret!=0) {
-      LOG_ERROR("Unable to open input image file '%s': %s!\n",
-                glob_xmount.input.pp_images[i]->pp_files[0],
-                glob_xmount.input.pp_images[i]->p_functions->
-                  GetErrorMessage(ret));
-      FreeResources();
-      return 1;
-    }
-
-    // Determine input image size
-    ret=glob_xmount.input.pp_images[i]->
-      p_functions->
-        Size(glob_xmount.input.pp_images[i]->p_handle,
-             &(glob_xmount.input.pp_images[i]->size));
-    if(ret!=0) {
-      LOG_ERROR("Unable to determine size of input image '%s': %s!\n",
-                glob_xmount.input.pp_images[i]->pp_files[0],
-                glob_xmount.input.pp_images[i]->
-                  p_functions->GetErrorMessage(ret));
-      FreeResources();
-      return 1;
-    }
-
-    // If an offset was specified, check it against offset and change size
-    if(glob_xmount.input.image_offset!=0) {
-      if(glob_xmount.input.image_offset>glob_xmount.input.pp_images[i]->size) {
-        LOG_ERROR("The specified offset is larger than the size of the input "
-                    "image '%s'! (%" PRIu64 " > %" PRIu64 ")\n",
-                  glob_xmount.input.pp_images[i]->pp_files[0],
-                  glob_xmount.input.image_offset,
-                  glob_xmount.input.pp_images[i]->size);
-        FreeResources();
-        return 1;
-      }
-      glob_xmount.input.pp_images[i]->size-=glob_xmount.input.image_offset;
-    }
-
-    // If a size limit was specified, check it and change size
-    if(glob_xmount.input.image_size_limit!=0) {
-      if(glob_xmount.input.pp_images[i]->size<
-           glob_xmount.input.image_size_limit)
-      {
-        LOG_ERROR("The specified size limit is larger than the size of the "
-                    "input image '%s'! (%" PRIu64 " > %" PRIu64 ")\n",
-                  glob_xmount.input.pp_images[i]->pp_files[0],
-                  glob_xmount.input.image_size_limit,
-                  glob_xmount.input.pp_images[i]->size);
-        FreeResources();
-        return 1;
-      }
-      glob_xmount.input.pp_images[i]->size=glob_xmount.input.image_size_limit;
-    }
-
-    LOG_DEBUG("Input image loaded successfully\n")
+  input_ret=XmountInput_Open(glob_xmount.h_input);
+  if(input_ret!=e_XmountInput_Error_None) {
+    LOG_ERROR("Failed opening input image(s): Error code %u!\n",input_ret);
+    FreeResources();
+    return 1;
   }
 
   // Find morphing lib
@@ -1807,8 +1635,8 @@ int main(int argc, char *argv[]) {
   srand(time(NULL));
 
   // Calculate partial MD5 hash of input image file
-  if(CalculateInputImageHash(&(glob_xmount.input.image_hash_lo),
-                             &(glob_xmount.input.image_hash_hi))==FALSE)
+  if(CalculateInputImageHash(&(glob_xmount.image_hash_lo),
+                             &(glob_xmount.image_hash_hi))==FALSE)
   {
     LOG_ERROR("Couldn't calculate partial hash of morphed image!\n")
     return 1;
@@ -1817,13 +1645,13 @@ int main(int argc, char *argv[]) {
   if(glob_xmount.debug==TRUE) {
     LOG_DEBUG("Partial MD5 hash of morphed image: ")
     for(int i=0;i<8;i++)
-      printf("%02hhx",*(((char*)(&(glob_xmount.input.image_hash_lo)))+i));
+      printf("%02hhx",*(((char*)(&(glob_xmount.image_hash_lo)))+i));
     for(int i=0;i<8;i++)
-      printf("%02hhx",*(((char*)(&(glob_xmount.input.image_hash_hi)))+i));
+      printf("%02hhx",*(((char*)(&(glob_xmount.image_hash_hi)))+i));
     printf("\n");
   }
 
-  if(!ExtractOutputFileNames(glob_xmount.input.pp_images[0]->pp_files[0])) {
+  if(!ExtractOutputFileNames(glob_xmount.p_first_input_image_name)) {
     LOG_ERROR("Couldn't extract virtual file names!\n");
     FreeResources();
     return 1;

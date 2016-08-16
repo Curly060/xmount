@@ -54,6 +54,8 @@ typedef enum e_XmountInput_Error {
   e_XmountInput_Error_FailedGettingInfoFileContent,
   //! Unable to load library file
   e_XmountInput_Error_FailedLoadingLibrary,
+  //! Unable to load a library symbol
+  e_XmountInput_Error_FailedLoadingSymbol,
   //! Library has wrong API version
   e_XmountInput_Error_WrongLibraryApiVersion,
   //! Library is missing a function
@@ -62,45 +64,20 @@ typedef enum e_XmountInput_Error {
   e_XmountInput_Error_UnsupportedFormat,
   //! Specified image number is incorrect
   e_XmountInput_Error_NoSuchImage,
-/*
-
-  //! A given file path / name is invalid
-  e_XmountCache_Error_InvalidFile,
-  //! A given file does not exist
-  e_XmountCache_Error_InexistingFile,
-  //! A given file exists
-  e_XmountCache_Error_ExistingFile,
-  //! Unable to create needed xmount structures inside cache file
-  e_XmountCache_Error_FailedCacheInit,
-  //! Unable to open xmount cache file
-  e_XmountCache_Error_FailedOpeningCache,
-  //! Failed to get block cache index size
-  e_XmountCache_Error_FailedGettingIndexSize,
-  //! Invalid block cache index size
-  e_XmountCache_Error_InvalidIndexSize,
-  //! Unable to read block cache index
-  e_XmountCache_Error_FailedReadingIndex,
-  //! Failed closing cache block index
-  e_XmountCache_Error_FailedClosingIndex,
-  //! Failed closing cache block index
-  e_XmountCache_Error_FailedClosingBlockCache,
-  //! Failed closing cache block index
-  e_XmountCache_Error_FailedClosingCache,
-  //! Failed to update block cache index
-  e_XmountCache_Error_FailedUpdatingIndex,
-  //! Invalid block cache index specified
-  e_XmountCache_Error_InvalidIndex,
-  //! Block has not yet been cached
-  e_XmountCache_Error_UncachedBlock,
-  //! Invalid buffer specified
-  e_XmountCache_Error_InvalidBuffer,
-  //! Request would read beyond a single cache block
-  e_XmountCache_Error_ReadBeyondBlockBounds,
-  //! Failed reading cached data
-  e_XmountCache_Error_FailedReadingBlockCache,
-  //! Failed writing cached data
-  e_XmountCache_Error_FailedWritingBlockCache,
-*/
+  //! Unable to create input image handle
+  e_XmountInput_Error_FailedCreatingImageHandle,
+  //! Unable to parse input library options
+  e_XmountInput_Error_FailedParsingLibParams,
+  //! Unable to open input image
+  e_XmountInput_Error_FailedOpeningImage,
+  //! Unable to get image size
+  e_XmountInput_Error_FailedGettingImageSize,
+  //! A specified offset is larger than a specified image
+  e_XmountInput_Error_OffsetExceedsImageSize,
+  //! A specified size limit is larger than a specified image
+  e_XmountInput_Error_SizelimitExceedsImageSize,
+  //! Unable to read data from input image
+  e_XmountInput_Error_FailedReadingData
 } te_XmountInput_Error;
 
 /*******************************************************************************
@@ -125,6 +102,16 @@ te_XmountInput_Error XmountInput_CreateHandle(pts_XmountInputHandle *pp_h);
  * \return e_XmountInput_Error_None on success
  */
 te_XmountInput_Error XmountInput_DestroyHandle(pts_XmountInputHandle *pp_h);
+
+/*!
+ * \brief Enable internal debugging
+ *
+ * Enables the generation of intrernal debugging messages.
+ *
+ * \param p_h Input handle
+ * \return e_XmountInput_Error_None on success
+ */
+te_XmountInput_Error XmountInput_EnableDebugging(pts_XmountInputHandle p_h);
 
 /*!
  * \brief Load an input library

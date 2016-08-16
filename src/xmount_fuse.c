@@ -15,7 +15,11 @@
 * this program. If not, see <http://www.gnu.org/licenses/>.                    *
 *******************************************************************************/
 
+#include <string.h>
+#include <unistd.h>
+#include <pthread.h>
 #include <errno.h>
+#include <sys/types.h>
 
 #include "xmount_fuse.h"
 #include "xmount.h"

@@ -15,12 +15,18 @@
 * this program. If not, see <http://www.gnu.org/licenses/>.                    *
 *******************************************************************************/
 
-#include <errno.h>
+#include <stdlib.h> // For calloc
 #include <string.h> // For memcpy
+#include <dlfcn.h> // For dlopen, dlclose, dlsym
 
+#include "../libxmount_morphing/libxmount_morphing.h"
 #include "xmount_morphing.h"
 #include "xmount.h"
 #include "macros.h"
+
+/*******************************************************************************
+ * Private definitions / macros
+ ******************************************************************************/
 
 #define LOG_WARNING(...) {            \
   LIBXMOUNT_LOG_WARNING(__VA_ARGS__); \
@@ -32,24 +38,518 @@
   LIBXMOUNT_LOG_DEBUG(glob_xmount.debug,__VA_ARGS__); \
 }
 
-//! Get size of morphed image
-/*!
- * \param p_size Buf to save size to
- * \return TRUE on success, FALSE on error
- */
-int GetMorphedImageSize(uint64_t *p_size) {
-  int ret;
+/*******************************************************************************
+ * Private types / structures / enums
+ ******************************************************************************/
 
-  ret=glob_xmount.morphing.p_functions->Size(glob_xmount.morphing.p_handle,
-                                             p_size);
-  if(ret!=0) {
-    LOG_ERROR("Unable to get morphed image size: %s!\n",
-              glob_xmount.morphing.p_functions->GetErrorMessage(ret));
-    return FALSE;
+//! Structure containing infos about morphing libs
+typedef struct s_XmountMorphingLib {
+  //! Filename of lib (without path)
+  char *p_name;
+  //! Handle to the loaded lib
+  void *p_lib;
+  //! Array of supported morphing types
+  char *p_supported_morphing_types;
+  //! Struct containing lib functions
+  ts_LibXmountMorphingFunctions lib_functions;
+} ts_XmountMorphingLib, *pts_XmountMorphingLib;
+
+//! Structures and vars needed for morph support
+typedef struct s_XmountMorphHandle {
+  //! Loaded morphing lib count
+  uint32_t libs_count;
+  //! Array containing infos about loaded morphing libs
+  pts_XmountMorphingLib *pp_libs;
+  //! Specified morphing type (--morph)
+  char *p_morph_type;
+  //! Amount of specified morphing lib params (--morphopts)
+  uint32_t lib_params_count;
+  //! Specified morphing lib params (--morphopts)
+  pts_LibXmountOptions *pp_lib_params;
+  //! Handle to initialized morphing lib
+  void *p_handle;
+  //! Morphing functions of initialized lib
+  pts_LibXmountMorphingFunctions p_functions;
+  //! Input image functions passed to morphing lib
+  ts_LibXmountMorphingInputFunctions input_image_functions;
+} ts_XmountMorphHandle;
+
+/*******************************************************************************
+ * Private functions declarations
+ ******************************************************************************/
+/*!
+ * \brief Find an input lib for a given input image
+ *
+ * Searches trough the list of loaded input libraries to find one that supports
+ * the given input image's format. On success, that library is associated with
+ * the given image.
+ *
+ * \param p_h Input handle
+ * \param p_input_image Input image to search input lib for
+ * \return e_XmountInput_Error_None on success
+ */
+/*
+te_XmountInput_Error XmountInput_FindLib(pts_XmountInputHandle p_h,
+                                         pts_XmountInputImage p_input_image);
+*/
+
+/*******************************************************************************
+ * Public functions implementations
+ ******************************************************************************/
+/*
+ * XmountMorphing_CreateHandle
+ */
+te_XmountMorphError XmountMorphing_CreateHandle(pts_XmountMorphHandle *pp_h) {
+  // Params check
+  if(pp_h==NULL) return e_XmountMorphError_InvalidHandlePointer;
+
+  // TODO: Impement
+
+  return e_XmountMorphError_None;
+}
+
+/*
+ * XmountMorphing_DestroyHandle
+ */
+te_XmountMorphError XmountMorphing_DestroyHandle(pts_XmountMorphHandle *pp_h) {
+  // Params check
+  if(pp_h==NULL) return e_XmountMorphError_InvalidHandlePointer;
+
+  // TODO: Impement
+
+  return e_XmountMorphError_None;
+}
+
+/*
+ * XmountMorphing_EnableDebugging
+ */
+te_XmountMorphError XmountMorphing_EnableDebugging(pts_XmountMorphHandle p_h) {
+  // Params check
+  if(p_h==NULL) return e_XmountMorphError_InvalidHandle;
+
+  // TODO: Impement
+
+  return e_XmountMorphError_None;
+}
+
+/*
+ * XmountMorphing_AddLibrary
+ */
+te_XmountMorphError XmountMorphing_AddLibrary(pts_XmountMorphHandle p_h,
+                                              const char *p_lib_name)
+{
+  uint32_t supported_types_len=0;
+  t_LibXmount_Morphing_GetApiVersion pfun_morphing_GetApiVersion;
+  t_LibXmount_Morphing_GetSupportedTypes pfun_morphing_GetSupportedTypes;
+  t_LibXmount_Morphing_GetFunctions pfun_morphing_GetFunctions;
+  void *p_libxmount=NULL;
+  pts_XmountMorphingLib p_morphing_lib=NULL;
+  char *p_buf=NULL;
+  char *p_library_path=NULL;
+  char *p_supported_types=NULL;
+
+  // Params check
+  if(p_h==NULL) return e_XmountMorphError_InvalidHandle;
+  if(p_lib_name==NULL) return e_XmountMorphError_InvalidString;
+
+  // Construct full library path
+  XMOUNT_STRSET(p_library_path,XMOUNT_LIBRARY_PATH);
+  if(p_library_path[strlen(p_library_path)]!='/') {
+    XMOUNT_STRAPP(p_library_path,"/");
+  }
+  XMOUNT_STRAPP(p_library_path,p_lib_name);
+
+#define XMOUNTMORPHING_LOADLIBS__LOAD_SYMBOL(name,pfun) {        \
+  if((pfun=dlsym(p_libxmount,name))==NULL) {                     \
+    LOG_ERROR("Unable to load symbol '%s' from library '%s'!\n", \
+              name,                                              \
+              p_library_path);                                   \
+    dlclose(p_libxmount);                                        \
+    return e_XmountMorphError_FailedLoadingSymbol;               \
+  }                                                              \
+}
+
+  // Try to load given library
+  p_libxmount=dlopen(p_library_path,RTLD_NOW);
+  if(p_libxmount==NULL) {
+    LOG_ERROR("Unable to load morphing library '%s': %s!\n",
+              p_library_path,
+              dlerror());
+    return e_XmountMorphError_FailedLoadingLibrary;
   }
 
-  return TRUE;
+  // Load library symbols
+  XMOUNTMORPHING_LOADLIBS__LOAD_SYMBOL("LibXmount_Morphing_GetApiVersion",
+                                       pfun_morphing_GetApiVersion);
+
+  // Check library's API version
+  if(pfun_morphing_GetApiVersion()!=LIBXMOUNT_MORPHING_API_VERSION) {
+    LOG_DEBUG("Failed! Wrong API version.\n");
+    LOG_ERROR("Unable to load morphing library '%s'. Wrong API version\n",
+              p_library_path);
+    dlclose(p_libxmount);
+    return e_XmountMorphError_WrongLibraryApiVersion;
+  }
+
+  LIBXMOUNT_LOAD_SYMBOL("LibXmount_Morphing_GetSupportedTypes",
+                        pfun_morphing_GetSupportedTypes);
+  LIBXMOUNT_LOAD_SYMBOL("LibXmount_Morphing_GetFunctions",
+                        pfun_morphing_GetFunctions);
+
+  // Construct new entry for our library list
+  XMOUNT_MALLOC(p_morphing_lib,
+                pts_XmountMorphingLib,
+                sizeof(ts_XmountMorphingLib));
+  // Initialize lib_functions structure to NULL
+  memset(&(p_morphing_lib->lib_functions),
+         0,
+         sizeof(ts_LibXmountMorphingFunctions));
+
+  // Set name and handle
+  XMOUNT_STRSET(p_morphing_lib->p_name,p_lib_name);
+  p_morphing_lib->p_lib=p_libxmount;
+
+  // Get and set supported types
+  p_supported_types=pfun_morphing_GetSupportedTypes();
+  supported_types_len=0;
+  p_buf=p_supported_types;
+  while(*p_buf!='\0') {
+    supported_types_len+=(strlen(p_buf)+1);
+    p_buf+=(strlen(p_buf)+1);
+  }
+  supported_types_len++;
+  XMOUNT_MALLOC(p_morphing_lib->p_supported_morphing_types,
+                char*,
+                supported_types_len);
+  memcpy(p_morphing_lib->p_supported_morphing_types,
+         p_supported_types,
+         supported_types_len);
+
+  // Get, set and check lib_functions
+  pfun_morphing_GetFunctions(&(p_morphing_lib->lib_functions));
+  if(p_morphing_lib->lib_functions.CreateHandle==NULL ||
+     p_morphing_lib->lib_functions.DestroyHandle==NULL ||
+     p_morphing_lib->lib_functions.Morph==NULL ||
+     p_morphing_lib->lib_functions.Size==NULL ||
+     p_morphing_lib->lib_functions.Read==NULL ||
+     p_morphing_lib->lib_functions.OptionsHelp==NULL ||
+     p_morphing_lib->lib_functions.OptionsParse==NULL ||
+     p_morphing_lib->lib_functions.GetInfofileContent==NULL ||
+     p_morphing_lib->lib_functions.GetErrorMessage==NULL ||
+     p_morphing_lib->lib_functions.FreeBuffer==NULL)
+  {
+    LOG_DEBUG("Missing implemention of one or more functions in lib %s!\n",
+              p_lib_name);
+    XMOUNT_FREE(p_morphing_lib->p_supported_morphing_types);
+    XMOUNT_FREE(p_morphing_lib->p_name);
+    XMOUNT_FREE(p_morphing_lib);
+    dlclose(p_libxmount);
+    return e_XmountMorphError_MissingLibraryFunction;
+  }
+
+  // Add entry to the input library list
+  XMOUNT_REALLOC(p_h->pp_libs,
+                 pts_XmountMorphingLib*,
+                 sizeof(pts_XmountMorphingLib)*(p_h->libs_count+1));
+  p_h->pp_libs[p_h->libs_count++]=p_morphing_lib;
+
+  LOG_DEBUG("Morphing library '%s' loaded successfully\n",p_lib_name);
+
+  return e_XmountMorphError_None;
 }
+
+/*
+ * XmountMorphing_GetLibraryCount
+ */
+te_XmountMorphError XmountMorphing_GetLibraryCount(pts_XmountMorphHandle p_h,
+                                                   uint32_t *p_count)
+{
+  // Params check
+  if(p_h==NULL) return e_XmountMorphError_InvalidHandle;
+
+  // TODO: Impement
+
+  return e_XmountMorphError_None;
+}
+
+/*
+ * XmountMorphing_GetSupportedTypes
+ */
+te_XmountMorphError XmountMorphing_GetSupportedTypes(pts_XmountMorphHandle p_h,
+                                                     char **pp_types)
+{
+  char *p_buf=NULL;
+  char *p_types=NULL;
+  uint32_t cur_len=0;
+  uint32_t vector_len=0;
+
+  // Params check
+  if(p_h==NULL) return e_XmountMorphError_InvalidHandle;
+  if(pp_types==NULL) return e_XmountMorphError_InvalidBuffer;
+
+  // Loop over all loaded libs, extract supported types and add to our vector
+  // TODO: IMPROVEMENT: Final vector could be sorted
+  for(uint32_t i=0;i<p_h->libs_count;i++) {
+    p_buf=p_h->pp_libs[i]->p_supported_morphing_types;
+    while(p_buf!=NULL && *p_buf!='\0') p_buf+=(strlen(p_buf)+1);
+    cur_len=(uint32_t)(p_buf-p_h->pp_libs[i]->p_supported_morphing_types);
+    if(cur_len==0) continue;
+    p_types=(char*)realloc(p_types,vector_len+cur_len);
+    if(p_types==NULL) return e_XmountInput_Error_Alloc;
+    memcpy(p_types+vector_len,
+           p_h->pp_libs[i]->p_supported_morphing_types,
+           cur_len);
+    vector_len+=cur_len;
+  }
+
+  // Null-terminate vector
+  p_types=(char*)realloc(p_types,vector_len+1);
+  if(p_types==NULL) return e_XmountInput_Error_Alloc;
+  p_types[vector_len]='\0';
+
+  *pp_types=p_types;
+  return e_XmountMorphError_None;
+}
+
+/*
+ * XmountMorphing_SetOptions
+ */
+te_XmountMorphError XmountMorphing_SetOptions(pts_XmountMorphHandle p_h,
+                                              char *p_options)
+{
+  // Params check
+  if(p_h==NULL) return e_XmountMorphError_InvalidHandle;
+  if(p_options==NULL) return e_XmountMorphError_InvalidString;
+
+  // Make sure library parameters haven't been set previously
+  if(p_h->pp_lib_params!=NULL) {
+    LOG_ERROR("Morphing library options already set!\n");
+    return e_XmountMorphError_LibOptionsAlreadySet;
+  }
+
+  // Save options
+  if(XmountLib_SplitLibParams(p_options,
+                              &(p_h->lib_params_count),
+                              &(p_h->pp_lib_params))!=0)
+  {
+    LOG_ERROR("Unable to parse morphing library options '%s'!\n",p_options);
+    return e_XmountMorphError_FailedParsingOptions;
+  }
+
+  return e_XmountMorphError_None;
+}
+
+/*
+ * XmountMorphing_GetOptionsHelpText
+ */
+te_XmountMorphError XmountMorphing_GetOptionsHelpText(pts_XmountMorphHandle p_h,
+                                                      char **pp_help_text)
+{
+  const char *p_buf=NULL;
+  char *p_help=NULL;
+  int ret=0;
+
+  // Params check
+  if(p_h==NULL) return e_XmountMorphError_InvalidHandle;
+  if(pp_help_text==NULL) return e_XmountMorphError_InvalidBuffer;
+
+  // Loop over all loaded libs, extract help and add to our text buffer
+  // TODO: IMPROVEMENT: Final text should be sorted by lib's name
+  for(uint32_t i=0;i<p_h->libs_count;i++) {
+    ret=p_h->pp_libs[i]->lib_functions.OptionsHelp(&p_buf);
+    if(ret!=0) {
+      LOG_ERROR("Unable to get options help for library '%s': %s!\n",
+                p_h->pp_libs[i]->p_name,
+                p_h->pp_libs[i]->lib_functions.GetErrorMessage(ret));
+      continue;
+    }
+    if(p_buf==NULL) continue;
+    XMOUNT_STRAPP(p_help,"  - ");
+    XMOUNT_STRAPP(p_help,p_h->pp_libs[i]->p_name);
+    XMOUNT_STRAPP(p_help,"\n");
+    XMOUNT_STRAPP(p_help,p_buf);
+    XMOUNT_STRAPP(p_help,"\n");
+    p_h->pp_libs[i]->lib_functions.FreeBuffer(p_buf);
+  }
+
+  *pp_help_text=p_help;
+  return e_XmountMorphError_None;
+}
+
+/*
+ * XmountMorphingt_GetLibsInfoText
+ */
+te_XmountMorphError XmountMorphing_GetLibsInfoText(pts_XmountMorphHandle p_h,
+                                                   char **pp_info_text)
+{
+  char *p_buf=NULL;
+  char *p_info_text=NULL;
+  uint8_t first=0;
+
+  // Params check
+  if(p_h==NULL) return e_XmountMorphError_InvalidHandle;
+  if(pp_info_text==NULL) return e_XmountMorphError_InvalidBuffer;
+
+  // Loop over all loaded libs, extract name and supported types and add to
+  // our text buffer
+  // TODO: IMPROVEMENT: Final text should be sorted by lib's name
+  for(uint32_t i=0;i<p_h->libs_count;i++) {
+    XMOUNT_STRAPP(p_info_text,"    - ");
+    XMOUNT_STRAPP(p_info_text,p_h->pp_libs[i]->p_name);
+    XMOUNT_STRAPP(p_info_text," supporting ");
+    XMOUNT_STRAPP(p_info_text,"    - ");
+    XMOUNT_STRAPP(p_info_text,"    - ");
+    p_buf=p_h->pp_libs[i]->p_supported_morphing_types;
+    first=1;
+    while(*p_buf!='\0') {
+      if(first==1) {
+        XMOUNT_STRAPP(p_info_text,"\"");
+        XMOUNT_STRAPP(p_info_text,p_buf);
+        XMOUNT_STRAPP(p_info_text,"\"");
+        first=0;
+      } else {
+        XMOUNT_STRAPP(p_info_text,", \"");
+        XMOUNT_STRAPP(p_info_text,p_buf);
+        XMOUNT_STRAPP(p_info_text,"\"");
+      }
+      p_buf+=(strlen(p_buf)+1);
+    }
+    XMOUNT_STRAPP(p_info_text,"\n");
+  }
+
+  *pp_info_text=p_info_text;
+  return e_XmountMorphError_None;
+}
+
+/*
+ * XmountMorphing_SetType
+ */
+te_XmountMorphError XmountMorphing_SetType(pts_XmountMorphHandle p_h,
+                                           char *p_type)
+{
+  // Params check
+  if(p_h==NULL) return e_XmountMorphError_InvalidHandle;
+  if(p_type==NULL) return e_XmountMorphError_InvalidString;
+
+  XMOUNT_STRSET(p_h->p_morph_type,p_type);
+  return e_XmountMorphError_None;
+}
+
+/*
+ * XmountMorphing_StartMorph
+ */
+te_XmountMorphError XmountMorphing_StartMorph(pts_XmountMorphHandle p_h) {
+  // Params check
+  if(p_h==NULL) return e_XmountMorphError_InvalidHandle;
+
+  // TODO: Impement
+
+  return e_XmountMorphError_None;
+}
+
+/*
+ * XmountInput_StopMorph
+ */
+te_XmountMorphError XmountInput_StopMorph(pts_XmountMorphHandle p_h) {
+  // Params check
+  if(p_h==NULL) return e_XmountMorphError_InvalidHandle;
+
+  // TODO: Impement
+
+  return e_XmountMorphError_None;
+}
+
+/*
+ * XmountMorphing_GetSize
+ */
+te_XmountMorphError XmountMorphing_GetSize(pts_XmountMorphHandle p_h,
+                                           uint64_t *p_size)
+{
+  int ret=0;
+
+  // Params check
+  if(p_h==NULL) return e_XmountMorphError_InvalidHandle;
+  if(p_size==NULL) return e_XmountMorphError_InvalidBuffer;
+
+  // Get morphed image size
+  ret=p_h->p_functions->Size(p_h->p_handle,p_size);
+  if(ret!=0) {
+    LOG_ERROR("Unable to get morphed image size: %s!\n",
+              p_h->p_functions->GetErrorMessage(ret));
+    return e_XmountMorphError_FailedGettingImageSize;
+  }
+
+  return e_XmountMorphError_None;
+}
+
+/*
+ * XmountMorphing_ReadData
+ */
+te_XmountMorphError XmountMorphing_ReadData(pts_XmountMorphHandle p_h,
+                                            char *p_buf,
+                                            uint64_t offset,
+                                            uint64_t count,
+                                            uint64_t *p_read)
+{
+  // Params check
+  if(p_h==NULL) return e_XmountMorphError_InvalidHandle;
+
+  // TODO: Impement
+
+  return e_XmountMorphError_None;
+}
+
+/*
+ * XmountMorphing_WriteData
+ */
+te_XmountMorphError XmountMorphing_WriteData(pts_XmountMorphHandle p_h,
+                                             const char *p_buf,
+                                             uint64_t offset,
+                                             uint64_t count)
+{
+  // Params check
+  if(p_h==NULL) return e_XmountMorphError_InvalidHandle;
+
+  // TODO: Impement
+
+  return e_XmountMorphError_None;
+}
+
+/*
+ * XmountMorphing_GetInfoFileContent
+ */
+te_XmountMorphError XmountMorphing_GetInfoFileContent(pts_XmountMorphHandle p_h,
+                                                      char **pp_content)
+{
+  int ret=0;
+  char *p_buf=NULL;
+  char *p_content=NULL;
+
+  // Params check
+  if(p_h==NULL) return e_XmountMorphError_InvalidHandle;
+  if(pp_content==NULL) return e_XmountMorphError_InvalidBuffer;
+
+  ret=p_h->p_functions->GetInfofileContent(p_h->p_handle,(const char**)&p_buf);
+  if(ret!=0) {
+    LOG_ERROR("Unable to get info file content from morphing lib: %s!\n",
+              p_h->p_functions->GetErrorMessage(ret));
+    return e_XmountMorphError_FailedGettingInfoFileContent;
+  }
+  // Add infos to main buffer and free p_buf
+  if(p_buf!=NULL) {
+    XMOUNT_STRAPP(p_content,p_buf);
+    p_h->p_functions->FreeBuffer(p_buf);
+  } else {
+    XMOUNT_STRAPP(p_content,"None\n");
+  }
+
+  *pp_content=p_content;
+  return e_XmountMorphError_None;
+}
+
+/*******************************************************************************
+ * Private functions implementations
+ ******************************************************************************/
 
 //! Read data from morphed image
 /*!
@@ -59,6 +559,7 @@ int GetMorphedImageSize(uint64_t *p_size) {
  * \param p_read Number of read bytes on success
  * \return TRUE on success, negated error code on error
  */
+/*
 int ReadMorphedImageData(char *p_buf,
                                 off_t offset,
                                 size_t size,
@@ -170,6 +671,7 @@ int ReadMorphedImageData(char *p_buf,
   *p_read=to_read;
   return TRUE;
 }
+*/
 
 //! Write data to morphed image
 /*!
@@ -179,6 +681,7 @@ int ReadMorphedImageData(char *p_buf,
  * \param p_written Amount of successfully written bytes
  * \return TRUE on success, negated error code on error
  */
+/*
 int WriteMorphedImageData(const char *p_buf,
                                  off_t offset,
                                  size_t count,
@@ -314,3 +817,4 @@ int WriteMorphedImageData(const char *p_buf,
   *p_written=to_write;
   return TRUE;
 }
+*/

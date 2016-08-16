@@ -59,7 +59,7 @@ typedef struct s_XmountData {
   //! Input image related data
   pts_XmountInputHandle h_input;
   //! Morphing related data
-  ts_MorphingData morphing;
+  pts_XmountMorphHandle h_morphing;
   //! Cache file handle
   pts_XmountCacheHandle h_cache;
   //! Output image related data
@@ -76,6 +76,10 @@ typedef struct s_XmountData {
   char *p_mountpoint;
   //! First input image's path/name
   char *p_first_input_image_name;
+  //! MD5 hash of partial input image (lower 64 bit) (after morph)
+  uint64_t image_hash_lo;
+  //! MD5 hash of partial input image (higher 64 bit) (after morph)
+  uint64_t image_hash_hi;
   //! Mutex to control concurrent read & write access on output image
   pthread_mutex_t mutex_image_rw;
   //! Mutex to control concurrent read access on info file

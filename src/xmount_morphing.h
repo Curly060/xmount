@@ -27,7 +27,59 @@
 /*******************************************************************************
  * Public types / structures / enums
  ******************************************************************************/
+//! Morphing handle
 typedef struct s_XmountMorphHandle *pts_XmountMorphHandle;
+
+/*!
+ * \brief Function to get the amount of input images
+ *
+ * Function to get the amount of input images
+ *
+ * \param p_count Count of input images
+ * \return 0 on success
+ */
+typedef int (*tfun_XmountMorphing_InputImageCount)(uint64_t *p_count);
+
+/*!
+ * \brief Function to get the size of the morphed data
+ *
+ * Function to get the size of the morphed data
+ *
+ * \param image Image number
+ * \param p_size Pointer to store input image's size to
+ * \return 0 on success
+ */
+typedef int (*tfun_XmountMorphing_InputImageSize)(uint64_t image, uint64_t *p_size);
+
+//! Function to read data from input image
+/*!
+ * \param image Image number
+ * \param p_buf Buffer to store read data to
+ * \param offset Position at which to start reading
+ * \param count Amount of bytes to read
+ * \param p_read Number of read bytes on success
+ * \return 0 on success or negated error code on error
+ */
+typedef int (*tfun_XmountMorphing_InputImageRead)(uint64_t image,
+                                                  char *p_buf,
+                                                  off_t offset,
+                                                  size_t count,
+                                                  size_t *p_read);
+
+//! Function to write data to input image
+/*!
+ * \param image Image number
+ * \param p_buf Buffer to store read data to
+ * \param offset Position at which to start reading
+ * \param count Amount of bytes to read
+ * \param p_read Number of read bytes on success
+ * \return 0 on success or negated error code on error
+ */
+typedef int (*tfun_XmountMorphing_InputImageWrite)(uint64_t image,
+                                                   char *p_buf,
+                                                   off_t offset,
+                                                   size_t count,
+                                                   size_t *p_written);
 
 typedef enum e_XmountMorphError {
   //! No error
@@ -58,9 +110,9 @@ typedef enum e_XmountMorphError {
   e_XmountMorphError_WrongLibraryApiVersion,
   //! Library is missing a function
   e_XmountMorphError_MissingLibraryFunction,
+  //! Unsupported morphing type
+  e_XmountInput_Error_UnsupportedType,
 /*
-  //! Unsupported input image format
-  e_XmountInput_Error_UnsupportedFormat,
   //! Specified image number is incorrect
   e_XmountInput_Error_NoSuchImage,
   //! Unable to create input image handle
@@ -93,7 +145,11 @@ typedef enum e_XmountMorphError {
  * \param pp_h Pointer to input handle
  * \return e_XmountInput_Error_None on success
  */
-te_XmountMorphError XmountMorphing_CreateHandle(pts_XmountMorphHandle *pp_h);
+te_XmountMorphError XmountMorphing_CreateHandle(pts_XmountMorphHandle *pp_h,
+                                                tfun_XmountMorphing_InputImageCount fun_image_count,
+                                                tfun_XmountMorphing_InputImageSize fun_image_size,
+                                                tfun_XmountMorphing_InputImageRead fun_image_read,
+                                                tfun_XmountMorphing_InputImageWrite fun_image_write);
 
 /*!
  * \brief Destroy input handle

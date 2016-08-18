@@ -1087,40 +1087,6 @@ static int LoadLibs() {
            glob_xmount.output.libs_count>0) ? TRUE : FALSE);
 }
 
-//! Search an appropriate morphing lib for the specified morph type
-/*!
- * \return TRUE on success, FALSE on error
- */
-static int FindMorphingLib() {
-  char *p_buf;
-
-  LOG_DEBUG("Trying to find suitable library for morph type '%s'.\n",
-            glob_xmount.morphing.p_morph_type);
-
-  // Loop over all loaded libs
-  for(uint32_t i=0;i<glob_xmount.morphing.libs_count;i++) {
-    LOG_DEBUG("Checking morphing library %s\n",
-              glob_xmount.morphing.pp_libs[i]->p_name);
-    p_buf=glob_xmount.morphing.pp_libs[i]->p_supported_morphing_types;
-    while(*p_buf!='\0') {
-      if(strcmp(p_buf,glob_xmount.morphing.p_morph_type)==0) {
-        // Library supports morph type, set lib functions
-        LOG_DEBUG("Morphing library '%s' pretends to handle that morph type.\n",
-                  glob_xmount.morphing.pp_libs[i]->p_name);
-        glob_xmount.morphing.p_functions=
-          &(glob_xmount.morphing.pp_libs[i]->lib_functions);
-        return TRUE;
-      }
-      p_buf+=(strlen(p_buf)+1);
-    }
-  }
-
-  LOG_DEBUG("Couldn't find any suitable library.\n");
-
-  // No library supporting morph type found
-  return FALSE;
-}
-
 //! Search an appropriate output lib for the specified output format
 /*!
  * \return TRUE on success, FALSE on error
@@ -1157,6 +1123,7 @@ static int FindOutputLib() {
 
 static int InitResources() {
   te_XmountInput_Error input_ret=e_XmountInput_Error_None;
+  te_XmountMorphError morph_ret=e_XmountMorphError_None;
 
   // Args
   glob_xmount.args.overwrite_cache=FALSE;
@@ -1170,17 +1137,15 @@ static int InitResources() {
   }
 
   // Morphing
-  glob_xmount.morphing.libs_count=0;
-  glob_xmount.morphing.pp_libs=NULL;
-  glob_xmount.morphing.p_morph_type=NULL;
-  glob_xmount.morphing.lib_params_count=0;
-  glob_xmount.morphing.pp_lib_params=NULL;
-  glob_xmount.morphing.p_handle=NULL;
-  glob_xmount.morphing.p_functions=NULL;
-  glob_xmount.morphing.input_image_functions.ImageCount=
-    &LibXmount_Morphing_ImageCount;
-  glob_xmount.morphing.input_image_functions.Size=&LibXmount_Morphing_Size;
-  glob_xmount.morphing.input_image_functions.Read=&LibXmount_Morphing_Read;
+  morph_ret=XmountMorphing_CreateHandle(&(glob_xmount.h_morphing),
+                                        &LibXmount_Morphing_ImageCount,
+                                        &LibXmount_Morphing_Size,
+                                        &LibXmount_Morphing_Read,
+                                        &LibXmount_Morphing_Write);
+  if(input_ret!=e_XmountMorphError_None) {
+    LOG_ERROR("Unable to create morphing handle: Error code %u!\n",morph_ret);
+    return FALSE;
+  }
 
   // Cache
   glob_xmount.h_cache=NULL;
@@ -1412,6 +1377,31 @@ static int LibXmount_Morphing_Read(uint64_t image,
     return -EIO;
   }
 
+  return 0;
+}
+
+static int LibXmount_Morphing_Write(uint64_t image,
+                                    char *p_buf,
+                                    off_t offset,
+                                    size_t count,
+                                    size_t *p_written)
+{
+  te_XmountInput_Error input_ret=e_XmountInput_Error_None;
+/*
+  input_ret=XmountInput_ReadData(glob_xmount.h_input,
+                                 image,
+                                 p_buf,
+                                 offset,
+                                 count,
+                                 p_read);
+  if(input_ret!=e_XmountInput_Error_None) {
+    LOG_ERROR("Unable to read data of input image %" PRIu64
+                ": Error code %u!\n",
+              image,
+              input_ret);
+    return -EIO;
+  }
+*/
   return 0;
 }
 

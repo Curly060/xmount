@@ -78,20 +78,16 @@ typedef struct s_XmountMorphHandle {
  * Private functions declarations
  ******************************************************************************/
 /*!
- * \brief Find an input lib for a given input image
+ * \brief Find a morphing lib for a given morph type
  *
- * Searches trough the list of loaded input libraries to find one that supports
- * the given input image's format. On success, that library is associated with
- * the given image.
+ * Searches trough the list of loaded morphing libraries to find one that
+ * supports the given morph type. On success, that library is associated with
+ * the given handle.
  *
- * \param p_h Input handle
- * \param p_input_image Input image to search input lib for
+ * \param p_h Morphing handle
  * \return e_XmountInput_Error_None on success
  */
-/*
-te_XmountInput_Error XmountInput_FindLib(pts_XmountInputHandle p_h,
-                                         pts_XmountInputImage p_input_image);
-*/
+te_XmountMorphError XmountMorphing_FindMorphLib(pts_XmountMorphHandle p_h);
 
 /*******************************************************************************
  * Public functions implementations
@@ -100,11 +96,26 @@ te_XmountInput_Error XmountInput_FindLib(pts_XmountInputHandle p_h,
  * XmountMorphing_CreateHandle
  */
 te_XmountMorphError XmountMorphing_CreateHandle(pts_XmountMorphHandle *pp_h) {
+  pts_XmountMorphHandle p_h=NULL;
+
   // Params check
   if(pp_h==NULL) return e_XmountMorphError_InvalidHandlePointer;
 
-  // TODO: Impement
+  // Alloc new handle
+  p_h=(pts_XmountMorphHandle)calloc(1,sizeof(ts_XmountMorphHandle));
+  if(p_h==NULL) return e_XmountMorphError_Alloc;
 
+  // Init values
+  p_h->pp_libs=NULL;
+  p_h->p_morph_type=NULL;
+  p_h->pp_lib_params=NULL;
+  p_h->p_handle=NULL;
+  p_h->p_functions=NULL;
+  p_h->input_image_functions.ImageCount=&LibXmount_Morphing_ImageCount;
+  p_h->input_image_functions.Size=&LibXmount_Morphing_Size;
+  p_h->input_image_functions.Read=&LibXmount_Morphing_Read;
+
+  *pp_h=p_h;
   return e_XmountMorphError_None;
 }
 
@@ -550,6 +561,37 @@ te_XmountMorphError XmountMorphing_GetInfoFileContent(pts_XmountMorphHandle p_h,
 /*******************************************************************************
  * Private functions implementations
  ******************************************************************************/
+/*
+ * XmountMorphing_FindMorphLib
+ */
+te_XmountMorphError XmountMorphing_FindMorphLib(pts_XmountMorphHandle p_h) {
+  char *p_buf;
+
+  LOG_DEBUG("Trying to find suitable library for morph type '%s'.\n",
+            p_h->p_morph_type);
+
+  // Loop over all loaded libs
+  for(uint32_t i=0;i<p_h->libs_count;i++) {
+    LOG_DEBUG("Checking morphing library %s\n",p_h->pp_libs[i]->p_name);
+    p_buf=p_h->pp_libs[i]->p_supported_morphing_types;
+    while(*p_buf!='\0') {
+      if(strcmp(p_buf,p_h->p_morph_type)==0) {
+        // Library supports morph type, set lib functions
+        LOG_DEBUG("Morphing library '%s' pretends to handle that morph type.\n",
+                  p_h->pp_libs[i]->p_name);
+        p_h->p_functions=&(p_h->pp_libs[i]->lib_functions);
+        return e_XmountMorphError_None;
+      }
+      p_buf+=(strlen(p_buf)+1);
+    }
+  }
+
+  LOG_DEBUG("Couldn't find any suitable library.\n");
+
+  // No library supporting morph type found
+  return e_XmountInput_Error_UnsupportedType;
+}
+
 
 //! Read data from morphed image
 /*!

@@ -86,7 +86,6 @@ static int InitInfoFile();
  * Lib related
  */
 static int LoadLibs();
-static int FindMorphingLib();
 static int FindOutputLib();
 /*
  * Functions exported to LibXmount_Morphing
@@ -94,6 +93,7 @@ static int FindOutputLib();
 static int LibXmount_Morphing_ImageCount(uint64_t*);
 static int LibXmount_Morphing_Size(uint64_t, uint64_t*);
 static int LibXmount_Morphing_Read(uint64_t, char*, off_t, size_t, size_t*);
+static int LibXmount_Morphing_Write(uint64_t, char*, off_t, size_t, size_t*);
 /*
  * Functions exported to LibXmount_Output
  */
@@ -390,6 +390,12 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
         if(input_ret!=e_XmountInput_Error_None) {
           LOG_ERROR("Unable to enable input debugging: Error code %u!\n",
                     input_ret);
+          return FALSE;
+        }
+        morph_ret=XmountMorphing_EnableDebugging(glob_xmount.h_morphing);
+        if(morph_ret!=e_XmountMorphError_None) {
+          LOG_ERROR("Unable to enable morphing debugging: Error code %u!\n",
+                    morph_ret);
           return FALSE;
         }
       } else if(strcmp(pp_argv[i],"-h")==0) {
@@ -794,6 +800,8 @@ static int ExtractOutputFileNames(char *p_orig_name) {
 static int CalculateInputImageHash(uint64_t *p_hash_low,
                                    uint64_t *p_hash_high)
 {
+  // TODO: Reimplement
+/*
   char hash[16];
   md5_state_t md5_state;
   char *p_buf;
@@ -816,7 +824,7 @@ static int CalculateInputImageHash(uint64_t *p_hash_low,
   *p_hash_low=*((uint64_t*)hash);
   *p_hash_high=*((uint64_t*)(hash+8));
   free(p_buf);
-
+*/
   return TRUE;
 }
 
@@ -825,7 +833,6 @@ static int CalculateInputImageHash(uint64_t *p_hash_low,
  * \return TRUE on success, FALSE on error
  */
 static int InitInfoFile() {
-  int ret;
   char *p_buf;
   te_XmountInput_Error input_ret=e_XmountInput_Error_None;
   te_XmountMorphError morph_ret=e_XmountMorphError_None;
@@ -1142,7 +1149,7 @@ static int InitResources() {
                                         &LibXmount_Morphing_Size,
                                         &LibXmount_Morphing_Read,
                                         &LibXmount_Morphing_Write);
-  if(input_ret!=e_XmountMorphError_None) {
+  if(morph_ret!=e_XmountMorphError_None) {
     LOG_ERROR("Unable to create morphing handle: Error code %u!\n",morph_ret);
     return FALSE;
   }
@@ -1185,8 +1192,9 @@ static int InitResources() {
  */
 static void FreeResources() {
   int ret;
-  te_XmountCache_Error cache_ret=e_XmountCache_Error_None;
   te_XmountInput_Error input_ret=e_XmountInput_Error_None;
+  te_XmountMorphError morph_ret=e_XmountMorphError_None;
+  te_XmountCache_Error cache_ret=e_XmountCache_Error_None;
 
   LOG_DEBUG("Freeing all resources\n");
 
@@ -1250,37 +1258,10 @@ static void FreeResources() {
   }
 
   // Morphing
-  if(glob_xmount.morphing.p_functions!=NULL) {
-    if(glob_xmount.morphing.p_handle!=NULL) {
-      // Destroy morphing handle
-      ret=glob_xmount.morphing.p_functions->
-            DestroyHandle(&(glob_xmount.morphing.p_handle));
-      if(ret!=0) {
-        LOG_ERROR("Unable to destroy morphing handle: %s!\n",
-                  glob_xmount.morphing.p_functions->GetErrorMessage(ret));
-      }
-    }
-  }
-  if(glob_xmount.morphing.pp_lib_params!=NULL) {
-    for(uint32_t i=0;i<glob_xmount.morphing.lib_params_count;i++)
-      free(glob_xmount.morphing.pp_lib_params[i]);
-    free(glob_xmount.morphing.pp_lib_params);
-  }
-  if(glob_xmount.morphing.p_morph_type!=NULL)
-    free(glob_xmount.morphing.p_morph_type);
-  if(glob_xmount.morphing.pp_libs!=NULL) {
-    // Unload morphing libs
-    for(uint32_t i=0;i<glob_xmount.morphing.libs_count;i++) {
-      if(glob_xmount.morphing.pp_libs[i]==NULL) continue;
-      if(glob_xmount.morphing.pp_libs[i]->p_supported_morphing_types!=NULL)
-        free(glob_xmount.morphing.pp_libs[i]->p_supported_morphing_types);
-      if(glob_xmount.morphing.pp_libs[i]->p_lib!=NULL)
-        dlclose(glob_xmount.morphing.pp_libs[i]->p_lib);
-      if(glob_xmount.morphing.pp_libs[i]->p_name!=NULL)
-        free(glob_xmount.morphing.pp_libs[i]->p_name);
-      free(glob_xmount.morphing.pp_libs[i]);
-    }
-    free(glob_xmount.morphing.pp_libs);
+  morph_ret=XmountMorphing_DestroyHandle(&(glob_xmount.h_morphing));
+  if(morph_ret!=e_XmountMorphError_None) {
+    LOG_ERROR("Unable to destroy morphing handle: Error code %u: Ignoring!\n",
+              morph_ret);
   }
 
   // Input
@@ -1414,11 +1395,15 @@ static int LibXmount_Morphing_Write(uint64_t image,
  * \return 0 on success
  */
 static int LibXmount_Output_Size(uint64_t *p_size) {
-  int ret=0;
+  te_XmountMorphError morph_ret=e_XmountMorphError_None;
 
-  ret=GetMorphedImageSize(p_size);
+  morph_ret=XmountMorphing_GetSize(glob_xmount.h_morphing,p_size);
+  if(morph_ret!=e_XmountMorphError_None) {
+    LOG_ERROR("Unable to get morphed image size: Error code %u!\n",morph_ret);
+    return FALSE;
+  }
 
-  return ret==TRUE ? 0 : ret;
+  return TRUE;
 }
 
 //! Function to read data from the morphed image
@@ -1434,7 +1419,112 @@ static int LibXmount_Output_Read(char *p_buf,
                                  size_t count,
                                  size_t *p_read)
 {
-  return ReadMorphedImageData(p_buf,offset,count,p_read);
+  uint64_t block_off=0;
+  uint64_t cur_block=0;
+  uint64_t cur_to_read=0;
+  uint64_t image_size=0;
+  size_t read=0;
+  size_t to_read=0;
+  uint8_t is_block_cached=FALSE;
+  te_XmountMorphError morph_ret=e_XmountMorphError_None;
+  te_XmountCache_Error cache_ret=e_XmountCache_Error_None;
+
+  // Make sure we aren't reading past EOF of image file
+  morph_ret=XmountMorphing_GetSize(glob_xmount.h_morphing,&image_size);
+  if(morph_ret!=e_XmountMorphError_None) {
+    LOG_ERROR("Couldn't get size of morphed image: Error code %u!\n",morph_ret);
+    return -EIO;
+  }
+  if(offset>=image_size) {
+    // Offset is beyond image size
+    LOG_DEBUG("Offset %zu is at / beyond size of morphed image.\n",offset);
+    *p_read=0;
+    return FALSE;
+  }
+  if(offset+count>image_size) {
+    // Attempt to read data past EOF of morphed image file
+    to_read=image_size-offset;
+    LOG_DEBUG("Attempt to read data past EOF of morphed image. Corrected size "
+                "from %zu to %" PRIu64 ".\n",
+              count,
+              to_read);
+  } else to_read=count;
+
+  // Calculate block to start reading data from
+  cur_block=offset/XMOUNT_CACHE_BLOCK_SIZE;
+  block_off=offset%XMOUNT_CACHE_BLOCK_SIZE;
+
+  // Read image data
+  while(to_read!=0) {
+    // Calculate how many bytes we have to read from this block
+    if(block_off+to_read>XMOUNT_CACHE_BLOCK_SIZE) {
+      cur_to_read=XMOUNT_CACHE_BLOCK_SIZE-block_off;
+    } else cur_to_read=to_read;
+
+    // Determine if we have to read cached data
+    is_block_cached=FALSE;
+    if(glob_xmount.output.writable==TRUE) {
+      cache_ret=XmountCache_IsBlockCached(glob_xmount.h_cache,cur_block);
+      if(cache_ret==e_XmountCache_Error_None) is_block_cached=TRUE;
+      else if(cache_ret!=e_XmountCache_Error_UncachedBlock) {
+        LOG_ERROR("Unable to determine if block %" PRIu64 " is cached: "
+                    "Error code %u!\n",
+                  cur_block,
+                  cache_ret);
+        return -EIO;
+      }
+    }
+
+    // Check if block is cached
+    if(is_block_cached==TRUE) {
+      // Write support enabled and need to read altered data from cachefile
+      LOG_DEBUG("Reading %zu bytes from block cache file\n",cur_to_read);
+
+      cache_ret=XmountCache_BlockCacheRead(glob_xmount.h_cache,
+                                           p_buf,
+                                           cur_block,
+                                           block_off,
+                                           cur_to_read);
+      if(cache_ret!=e_XmountCache_Error_None) {
+        LOG_ERROR("Unable to read %" PRIu64
+                    " bytes of cached data from cache block %" PRIu64
+                    " at cache block offset %" PRIu64 ": Error code %u!\n",
+                  cur_to_read,
+                  cur_block,
+                  block_off,
+                  cache_ret);
+        return -EIO;
+      }
+    } else {
+      // No write support or data not cached
+      morph_ret=XmountMorphing_ReadData(glob_xmount.h_morphing,
+                                        p_buf,
+                                        (cur_block*XMOUNT_CACHE_BLOCK_SIZE)+
+                                          block_off,
+                                        cur_to_read,
+                                        &read);
+      if(morph_ret!=e_XmountMorphError_None || read!=cur_to_read) {
+        LOG_ERROR("Couldn't read %zu bytes at offset %zu from morphed image: "
+                    "Error code %u!\n",
+                  cur_to_read,
+                  offset,
+                  morph_ret);
+        return -EIO;
+      }
+      LOG_DEBUG("Read %" PRIu64 " bytes at offset %" PRIu64
+                  " from morphed image file\n",
+                cur_to_read,
+                (cur_block*XMOUNT_CACHE_BLOCK_SIZE)+block_off);
+    }
+
+    cur_block++;
+    block_off=0;
+    p_buf+=cur_to_read;
+    to_read-=cur_to_read;
+  }
+
+  *p_read=to_read;
+  return TRUE;
 }
 
 //! Function to write data to the morphed image
@@ -1450,7 +1540,135 @@ static int LibXmount_Output_Write(char *p_buf,
                                   size_t count,
                                   size_t *p_written)
 {
-  return WriteMorphedImageData(p_buf,offset,count,p_written);
+  uint64_t block_off=0;
+  uint64_t cur_block=0;
+  uint64_t cur_to_read=0;
+  uint64_t cur_to_write=0;
+  uint64_t image_size=0;
+  uint64_t read=0;
+  size_t to_write=0;
+  char *p_buf2=NULL;
+  uint8_t is_block_cached=FALSE;
+  te_XmountMorphError morph_ret=e_XmountMorphError_None;
+  te_XmountCache_Error cache_ret=e_XmountCache_Error_None;
+
+  // Make sure we aren't writing past EOF of image file
+  morph_ret=XmountMorphing_GetSize(glob_xmount.h_morphing,&image_size);
+  if(morph_ret!=e_XmountMorphError_None) {
+    LOG_ERROR("Couldn't get size of morphed image: Error code %u!\n",morph_ret);
+    return -EIO;
+  }
+  if(offset>=image_size) {
+    // Offset is beyond image size
+    LOG_DEBUG("Offset %zu is at / beyond size of morphed image.\n",offset);
+    *p_written=0;
+    return 0;
+  }
+  if(offset+count>image_size) {
+    // Attempt to write data past EOF of morphed image file
+    to_write=image_size-offset;
+    LOG_DEBUG("Attempt to write data past EOF of morphed image. Corrected size "
+                "from %zu to %" PRIu64 ".\n",
+              count,
+              to_write);
+  } else to_write=count;
+
+  // Calculate block to start writing data to
+  cur_block=offset/XMOUNT_CACHE_BLOCK_SIZE;
+  block_off=offset%XMOUNT_CACHE_BLOCK_SIZE;
+
+  while(to_write!=0) {
+    // Calculate how many bytes we have to write to this block
+    if(block_off+to_write>XMOUNT_CACHE_BLOCK_SIZE) {
+      cur_to_write=XMOUNT_CACHE_BLOCK_SIZE-block_off;
+    } else cur_to_write=to_write;
+
+    // Determine if block is already in cache
+    is_block_cached=FALSE;
+    cache_ret=XmountCache_IsBlockCached(glob_xmount.h_cache,cur_block);
+    if(cache_ret==e_XmountCache_Error_None) is_block_cached=TRUE;
+    else if(cache_ret!=e_XmountCache_Error_UncachedBlock) {
+      LOG_ERROR("Unable to determine if block %" PRIu64 " is cached: "
+                  "Error code %u!\n",
+                cur_block,
+                cache_ret);
+      return -EIO;
+    }
+
+    // Check if block is cached
+    if(is_block_cached==TRUE) {
+      // Block is cached
+      cache_ret=XmountCache_BlockCacheWrite(glob_xmount.h_cache,
+                                            p_buf,
+                                            cur_block,
+                                            block_off,
+                                            cur_to_write);
+      if(cache_ret!=e_XmountCache_Error_None) {
+        LOG_ERROR("Unable to write %" PRIu64
+                    " bytes of data to cache block %" PRIu64
+                    " at cache block offset %" PRIu64 ": Error code %u!\n",
+                  cur_to_write,
+                  cur_block,
+                  block_off,
+                  cache_ret);
+        return -EIO;
+      }
+
+      LOG_DEBUG("Wrote %" PRIu64 " bytes to block cache\n",cur_to_write);
+    } else {
+      // Uncached block. Need to cache entire new block
+      // Prepare new write buffer
+      XMOUNT_MALLOC(p_buf2,char*,XMOUNT_CACHE_BLOCK_SIZE);
+      memset(p_buf2,0x00,XMOUNT_CACHE_BLOCK_SIZE);
+
+      // Read full block from morphed image
+      cur_to_read=XMOUNT_CACHE_BLOCK_SIZE;
+      if((cur_block*XMOUNT_CACHE_BLOCK_SIZE)+XMOUNT_CACHE_BLOCK_SIZE>image_size) {
+        cur_to_read=XMOUNT_CACHE_BLOCK_SIZE-(((cur_block*XMOUNT_CACHE_BLOCK_SIZE)+
+                                         XMOUNT_CACHE_BLOCK_SIZE)-image_size);
+      }
+      morph_ret=XmountMorphing_ReadData(glob_xmount.h_morphing,
+                                        p_buf,
+                                        cur_block*XMOUNT_CACHE_BLOCK_SIZE,
+                                        cur_to_read,
+                                        &read);
+      if(morph_ret!=e_XmountMorphError_None || read!=cur_to_read) {
+        LOG_ERROR("Couldn't read %" PRIu64 " bytes at offset %zu "
+                    "from morphed image: Error code %u!\n",
+                  cur_to_read,
+                  offset,
+                  morph_ret);
+        XMOUNT_FREE(p_buf2);
+        return -EIO;
+      }
+
+      // Set changed data
+      memcpy(p_buf2+block_off,p_buf,cur_to_write);
+
+      cache_ret=XmountCache_BlockCacheAppend(glob_xmount.h_cache,
+                                             p_buf,
+                                             cur_block);
+      if(cache_ret!=e_XmountCache_Error_None) {
+        LOG_ERROR("Unable to append new block cache block %" PRIu64
+                    ": Error code %u!\n",
+                  cur_block,
+                  cache_ret);
+        XMOUNT_FREE(p_buf2);
+        return -EIO;
+      }
+      XMOUNT_FREE(p_buf2);
+
+      LOG_DEBUG("Appended new block cache block %" PRIu64 "\n",cur_block);
+    }
+
+    block_off=0;
+    cur_block++;
+    p_buf+=cur_to_write;
+    to_write-=cur_to_write;
+  }
+
+  *p_written=to_write;
+  return TRUE;
 }
 
 /*******************************************************************************
@@ -1463,6 +1681,7 @@ int main(int argc, char *argv[]) {
   int fuse_ret;
   char *p_err_msg;
   te_XmountInput_Error input_ret=e_XmountInput_Error_None;
+  te_XmountMorphError morph_ret=e_XmountMorphError_None;
   te_XmountCache_Error cache_ret=e_XmountCache_Error_None;
 
   // Set implemented FUSE functions
@@ -1525,9 +1744,6 @@ int main(int argc, char *argv[]) {
     FreeResources();
     return 1;
   }
-  if(glob_xmount.morphing.p_morph_type==NULL) {
-    XMOUNT_STRSET(glob_xmount.morphing.p_morph_type,"combine");
-  }
   // TODO: Add default output image format here
 
   // Check if mountpoint is a valid dir
@@ -1561,62 +1777,6 @@ int main(int argc, char *argv[]) {
   input_ret=XmountInput_Open(glob_xmount.h_input);
   if(input_ret!=e_XmountInput_Error_None) {
     LOG_ERROR("Failed opening input image(s): Error code %u!\n",input_ret);
-    FreeResources();
-    return 1;
-  }
-
-  // Find morphing lib
-  if(FindMorphingLib()!=TRUE) {
-    LOG_ERROR("Unable to find a library supporting the morphing type '%s'!\n",
-              glob_xmount.morphing.p_morph_type);
-    FreeResources();
-    return 1;
-  }
-
-  // Init morphing
-  ret=glob_xmount.morphing.p_functions->
-        CreateHandle(&glob_xmount.morphing.p_handle,
-                     glob_xmount.morphing.p_morph_type,
-                     glob_xmount.debug);
-  if(ret!=0) {
-    LOG_ERROR("Unable to create morphing handle: %s!\n",
-              glob_xmount.morphing.p_functions->GetErrorMessage(ret));
-    FreeResources();
-    return 1;
-  }
-
-  // Parse morphing lib specific options
-  if(glob_xmount.morphing.pp_lib_params!=NULL) {
-    p_err_msg=NULL;
-    ret=glob_xmount.morphing.p_functions->
-          OptionsParse(glob_xmount.morphing.p_handle,
-                       glob_xmount.morphing.lib_params_count,
-                       glob_xmount.morphing.pp_lib_params,
-                       (const char**)&p_err_msg);
-    if(ret!=0) {
-      if(p_err_msg!=NULL) {
-        LOG_ERROR("Unable to parse morphing library specific options: %s: %s!\n",
-                  glob_xmount.morphing.p_functions->GetErrorMessage(ret),
-                  p_err_msg);
-        glob_xmount.morphing.p_functions->FreeBuffer(p_err_msg);
-        FreeResources();
-        return 1;
-      } else {
-        LOG_ERROR("Unable to parse morphing library specific options: %s!\n",
-                  glob_xmount.morphing.p_functions->GetErrorMessage(ret));
-        FreeResources();
-        return 1;
-      }
-    }
-  }
-
-  // Morph image
-  ret=glob_xmount.morphing.p_functions->
-        Morph(glob_xmount.morphing.p_handle,
-              &(glob_xmount.morphing.input_image_functions));
-  if(ret!=0) {
-    LOG_ERROR("Unable to start morphing: %s!\n",
-              glob_xmount.morphing.p_functions->GetErrorMessage(ret));
     FreeResources();
     return 1;
   }
@@ -1694,12 +1854,9 @@ int main(int argc, char *argv[]) {
   }
 
   // Morph image
-  ret=glob_xmount.morphing.p_functions->
-        Morph(glob_xmount.morphing.p_handle,
-              &(glob_xmount.morphing.input_image_functions));
-  if(ret!=0) {
-    LOG_ERROR("Unable to start morphing: %s!\n",
-              glob_xmount.morphing.p_functions->GetErrorMessage(ret));
+  morph_ret=XmountMorphing_StartMorphing(glob_xmount.h_morphing);
+  if(morph_ret!=e_XmountMorphError_None) {
+    LOG_ERROR("Unable to start morphing: Error code %u!\n",morph_ret);
     FreeResources();
     return 1;
   }

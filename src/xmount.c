@@ -1367,8 +1367,10 @@ static int LibXmount_Morphing_Write(uint64_t image,
                                     size_t count,
                                     size_t *p_written)
 {
-  te_XmountInput_Error input_ret=e_XmountInput_Error_None;
+  // TODO: Implement
 /*
+  te_XmountInput_Error input_ret=e_XmountInput_Error_None;
+
   input_ret=XmountInput_ReadData(glob_xmount.h_input,
                                  image,
                                  p_buf,
@@ -1682,7 +1684,7 @@ int main(int argc, char *argv[]) {
   char *p_err_msg;
   te_XmountInput_Error input_ret=e_XmountInput_Error_None;
   te_XmountMorphError morph_ret=e_XmountMorphError_None;
-  te_XmountCache_Error cache_ret=e_XmountCache_Error_None;
+  //te_XmountCache_Error cache_ret=e_XmountCache_Error_None;
 
   // Set implemented FUSE functions
   struct fuse_operations xmount_operations = {
@@ -1773,12 +1775,45 @@ int main(int argc, char *argv[]) {
   pthread_mutex_init(&(glob_xmount.mutex_image_rw),NULL);
   pthread_mutex_init(&(glob_xmount.mutex_info_read),NULL);
 
-  // Load input images
+  // Open input image(s)
   input_ret=XmountInput_Open(glob_xmount.h_input);
   if(input_ret!=e_XmountInput_Error_None) {
     LOG_ERROR("Failed opening input image(s): Error code %u!\n",input_ret);
     FreeResources();
     return 1;
+  }
+
+  // Morph input image(s)
+  morph_ret=XmountMorphing_StartMorphing(glob_xmount.h_morphing);
+  if(morph_ret!=e_XmountMorphError_None) {
+    LOG_ERROR("Unable to start morphing: Error code %u!\n",morph_ret);
+    FreeResources();
+    return 1;
+  }
+
+  // Open / Create cache if needed
+  if(glob_xmount.output.writable) {
+    // Init cache file and cache file block index
+    // TODO: Add cache file creration / opening
+/*
+    if(glob_xmount.args.overwrite_cache==TRUE) {
+      cache_ret=XmountCache_Create(&(glob_xmount.h_cache),
+                                   glob_xmount.args.p_cache_file,
+
+
+    } else {
+      cache_ret=XmountCache_Open
+    }
+
+
+    te_XmountCache_Error cache_ret=e_XmountCache_Error_None;
+    if(!InitCacheFile()) {
+      LOG_ERROR("Couldn't initialize cache file!\n")
+      FreeResources();
+      return 1;
+    }
+*/
+    LOG_DEBUG("Cache file initialized successfully\n")
   }
 
   // Init random generator
@@ -1853,14 +1888,6 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  // Morph image
-  morph_ret=XmountMorphing_StartMorphing(glob_xmount.h_morphing);
-  if(morph_ret!=e_XmountMorphError_None) {
-    LOG_ERROR("Unable to start morphing: Error code %u!\n",morph_ret);
-    FreeResources();
-    return 1;
-  }
-
   // Gather infos for info file
   if(!InitInfoFile()) {
     LOG_ERROR("Couldn't gather infos for virtual image info file!\n")
@@ -1868,30 +1895,6 @@ int main(int argc, char *argv[]) {
     return 1;
   }
   LOG_DEBUG("Virtual image info file build successfully\n")
-
-  if(glob_xmount.output.writable) {
-    // Init cache file and cache file block index
-    // TODO: Add cache file creration / opening
-/*
-    if(glob_xmount.args.overwrite_cache==TRUE) {
-      cache_ret=XmountCache_Create(&(glob_xmount.h_cache),
-                                   glob_xmount.args.p_cache_file,
-
-
-    } else {
-      cache_ret=XmountCache_Open
-    }
-
-
-    te_XmountCache_Error cache_ret=e_XmountCache_Error_None;
-    if(!InitCacheFile()) {
-      LOG_ERROR("Couldn't initialize cache file!\n")
-      FreeResources();
-      return 1;
-    }
-*/
-    LOG_DEBUG("Cache file initialized successfully\n")
-  }
 
   // Call fuse_main to do the fuse magic
   fuse_ret=fuse_main(glob_xmount.fuse_argc,

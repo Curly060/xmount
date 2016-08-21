@@ -119,8 +119,12 @@ int XmountLib_SplitLibParams(char *p_params,
     if(*p_buf!='\0') p_buf++;
   }
 
-  LIBXMOUNT_LOG_DEBUG("Extracted a total of %" PRIu32 " library options\n",
+  // TODO: Missing debug value here!
+/*
+  LIBXMOUNT_LOG_DEBUG(debug,
+                      "Extracted a total of %" PRIu32 " library options\n",
                       opts_count);
+*/
 
   *p_ret_opts_count=opts_count;
   *ppp_ret_opt=pp_opts;

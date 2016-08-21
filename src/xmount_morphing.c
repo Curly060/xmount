@@ -603,7 +603,6 @@ te_XmountMorphError XmountMorphing_ReadData(pts_XmountMorphHandle p_h,
                                             uint64_t *p_read)
 {
   uint64_t image_size=0;
-  size_t read=0;
   size_t to_read=0;
   int ret;
   te_XmountMorphError morph_ret=e_XmountMorphError_None;

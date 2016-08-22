@@ -18,52 +18,317 @@
 #ifndef XMOUNT_OUTPUT_H
 #define XMOUNT_OUTPUT_H
 
-#include "../libxmount_output/libxmount_output.h"
+/*******************************************************************************
+ * Public definitions / macros
+ ******************************************************************************/
+//! Naming scheme of morphing libraries
+#define XMOUNT_OUTPUT_LIBRARY_NAMING_SCHEME "libxmount_output_"
 
-//! Structure containing infos about output libs
-typedef struct s_OutputLib {
-  //! Filename of lib (without path)
-  char *p_name;
-  //! Handle to the loaded lib
-  void *p_lib;
-  //! Array of supported output formats
-  char *p_supported_output_formats;
-  //! Struct containing lib functions
-  ts_LibXmountOutput_Functions lib_functions;
-} ts_OutputLib, *pts_OutputLib;
+/*******************************************************************************
+ * Public types / structures / enums
+ ******************************************************************************/
+//! Output handle
+typedef struct s_XmountOutputHandle *pts_XmountOutputHandle;
 
-//! Structure containing infos about output image
-typedef struct s_OutputData {
-  //! Loaded output lib count
-  uint32_t libs_count;
-  //! Array containing infos about loaded output libs
-  pts_OutputLib *pp_libs;
-  //! Specified output format (--out)
-  char *p_output_format;
-  //! Amount of specified output lib params
-  uint32_t lib_params_count;
-  //! Specified output lib params (--outopts)
-  pts_LibXmountOptions *pp_lib_params;
-  //! Handle to initialized output lib
-  void *p_handle;
-  //! Transformation functions of initialized lib
-  pts_LibXmountOutput_Functions p_functions;
-  //! Input image functions passed to output lib
-  ts_LibXmountOutput_InputFunctions input_functions;
-  //! Size
-  uint64_t image_size;
-  //! Writable? (Set to 1 if --cache was specified)
-  uint8_t writable;
-  //! Path of virtual image file
-  char *p_virtual_image_path;
-  //! Path of virtual image info file
-  char *p_info_path;
-  //! Pointer to virtual info file
-  char *p_info_file;
-} ts_OutputData;
+/*!
+ * \brief Function to get the size of the morphed data
+ *
+ * Function to get the size of the morphed data
+ *
+ * \param image Image number
+ * \param p_size Pointer to store input image's size to
+ * \return 0 on success
+ */
+typedef int (*tfun_XmountOutput_InputImageSize)(uint64_t image, uint64_t *p_size);
 
-int GetOutputImageSize(uint64_t*);
-int ReadOutputImageData(char*, off_t, size_t);
-int WriteOutputImageData(const char*, off_t, size_t);
+//! Function to read data from input image
+/*!
+ * \param image Image number
+ * \param p_buf Buffer to store read data to
+ * \param offset Position at which to start reading
+ * \param count Amount of bytes to read
+ * \param p_read Number of read bytes on success
+ * \return 0 on success or negated error code on error
+ */
+typedef int (*tfun_XmountOutput_InputImageRead)(uint64_t image,
+                                                  char *p_buf,
+                                                  off_t offset,
+                                                  size_t count,
+                                                  size_t *p_read);
+
+//! Function to write data to input image
+/*!
+ * \param image Image number
+ * \param p_buf Buffer to store read data to
+ * \param offset Position at which to start reading
+ * \param count Amount of bytes to read
+ * \param p_read Number of read bytes on success
+ * \return 0 on success or negated error code on error
+ */
+typedef int (*tfun_XmountOutput_InputImageWrite)(uint64_t image,
+                                                   char *p_buf,
+                                                   off_t offset,
+                                                   size_t count,
+                                                   size_t *p_written);
+
+typedef enum e_XmountOutputError {
+  //! No error
+  e_XmountOutputError_None=0,
+  //! Error to allocate memory
+  e_XmountOutputError_Alloc,
+  //! Invalid morphing handle
+  e_XmountOutputError_InvalidHandle,
+  //! Invalid pointer to a morphing handle
+  e_XmountOutputError_InvalidHandlePointer,
+  //! A given buffer is invalid
+  e_XmountOutputError_InvalidBuffer,
+  //! A given string is invalid
+  e_XmountOutputError_InvalidString,
+/*
+  //! Library options have already been set
+  e_XmountMorphError_LibOptionsAlreadySet,
+  //! Library options couldn't be parsed
+  e_XmountMorphError_FailedParsingOptions,
+  //! Unable to get info file content from library
+  e_XmountMorphError_FailedGettingInfoFileContent,
+  //! Unable to load library file
+  e_XmountMorphError_FailedLoadingLibrary,
+  //! Unable to load a library symbol
+  e_XmountMorphError_FailedLoadingSymbol,
+  //! Library has wrong API version
+  e_XmountMorphError_WrongLibraryApiVersion,
+  //! Library is missing a function
+  e_XmountMorphError_MissingLibraryFunction,
+  //! Unsupported morphing type
+  e_XmountMorphError_UnsupportedType,
+  //! Unable to create morphing image handle
+  e_XmountMorphError_FailedCreatingMorphHandle,
+  //! Unable to parse morphing library options
+  e_XmountMorphError_FailedParsingLibParams,
+  //! Unable to get image size
+  e_XmountMorphError_FailedGettingImageSize,
+  //! A specified offset is larger than the image
+  e_XmountMorphError_OffsetExceedsImageSize,
+  //! Unable to read data from morphed image
+  e_XmountMorphError_FailedReadingData
+*/
+} te_XmountOutputError;
+
+/*******************************************************************************
+ * Public functions declarations
+ ******************************************************************************/
+/*!
+ * \brief Create new morphing handle
+ *
+ * Creates a new morphing handle.
+ *
+ * \param pp_h Pointer to morphing handle
+ * \return e_XmountMorphError_None on success
+ */
+te_XmountOutputError
+  XmountOutput_CreateHandle(pts_XmountOutputHandle *pp_h,
+                            tfun_XmountOutput_InputImageSize p_img_size,
+                            tfun_XmountOutput_InputImageRead p_img_read,
+                            tfun_XmountOutput_InputImageWrite p_img_write);
+
+/*!
+ * \brief Destroy morphing handle
+ *
+ * Invalidates the given handle and frees all used resources.
+ *
+ * \param pp_h Pointer to morphing handle
+ * \return e_XmountMorphError_None on success
+ */
+te_XmountOutputError XmountOutput_DestroyHandle(pts_XmountOutputHandle *pp_h);
+
+/*!
+ * \brief Enable internal debugging
+ *
+ * Enables the generation of intrernal debugging messages.
+ *
+ * \param p_h Output handle
+ * \return e_XmountMorphError_None on success
+ */
+te_XmountOutputError XmountOutput_EnableDebugging(pts_XmountOutputHandle p_h);
+
+/*!
+ * \brief Load a morphing library
+ *
+ * Loads a given morphing library.
+ *
+ * \param p_h Output handle
+ * \param p_lib Library name (without path)
+ * \return e_XmountMorphError_None on success
+ */
+te_XmountOutputError XmountOutput_AddLibrary(pts_XmountOutputHandle p_h,
+                                              const char *p_lib_name);
+
+/*!
+ * \brief Get loaded morphing library count
+ *
+ * Returns the number of successfully loaded morphing libraries.
+ *
+ * \param p_h Output handle
+ * \param p_count Library count is returned in this variable
+ * \return e_XmountMorphError_None on success
+ */
+te_XmountOutputError XmountOutput_GetLibraryCount(pts_XmountOutputHandle p_h,
+                                                   uint32_t *p_count);
+
+/*!
+ * \brief Return all supported morphing types
+ *
+ * Returns a null-terminated vector of all supported morphing types.
+ *
+ * The returned vector must be freed by the caller.
+ *
+ * \param p_h Output handle
+ * \param pp_types Supported types vector is returned in this var
+ * \return e_XmountMorphError_None on success
+ */
+te_XmountOutputError XmountOutput_GetSupportedTypes(pts_XmountOutputHandle p_h,
+                                                     char **pp_types);
+
+/*!
+ * \brief Set library options
+ *
+ * Parses the given library option string (as given after --inopts).
+ *
+ * \param p_h Output handle
+ * \param p_options Library option string
+ * \return e_XmountMorphError_None on success
+ */
+te_XmountOutputError XmountOutput_SetOptions(pts_XmountOutputHandle p_h,
+                                              char *p_options);
+
+/*!
+ * \brief Return all library specific option help texts
+ *
+ * Returns a string containing help messages for all loaded morphing lib
+ * options. The string is pre-formated to be used in xmount's help output.
+ *
+ * The caller must free the returned string.
+ *
+ * \param p_h Output handle
+ * \param pp_help_text Help text is returned in this parameter
+ * \return e_XmountMorphError_None on success
+ */
+te_XmountOutputError XmountOutput_GetOptionsHelpText(pts_XmountOutputHandle p_h,
+                                                      char **pp_help_text);
+
+/*!
+ * \brief Returns a string containing infos about loaded libs
+ *
+ * Returns a string containing infos about loaded morphing libraries. The
+ * string is pre-formated to be used in xmount's info output.
+ *
+ * The caller must free the returned string.
+ *
+ * \param p_h Output handle
+ * \param pp_info_text Info text is returned in this parameter
+ * \return e_XmountMorphError_None on success
+ */
+te_XmountOutputError XmountOutput_GetLibsInfoText(pts_XmountOutputHandle p_h,
+                                                    char **pp_info_text);
+
+/*!
+ * \brief Set morphing type
+ *
+ * Set the morphing type that should be applied to the input image.
+ *
+ * \param p_h Output handle
+ * \param p_type Output type string as specified with xmount's --morph option.
+ * \return e_XmountMorphError_None on success
+ */
+te_XmountOutputError XmountOutput_SetType(pts_XmountOutputHandle p_h,
+                                           char *p_type);
+
+/*!
+ * \brief Start the morphing process
+ *
+ * Begins the morphing process.
+ *
+ * \param p_h Output handle
+ * \return e_XmountMorphError_None on success
+ */
+te_XmountOutputError XmountOutput_StartOutput(pts_XmountOutputHandle p_h);
+
+/*!
+ * \brief Stop the morphing process
+ *
+ * Ends the morphing process.
+ *
+ * \param p_h Output handle
+ * \return e_XmountMorphError_None on success
+ */
+te_XmountOutputError XmountOutput_StopOutput(pts_XmountOutputHandle p_h);
+
+/*!
+ * \brief Get the size of the morphed image
+ *
+ * Returns the size (in bytes) of the morphed image.
+ *
+ * \param p_h Output handle
+ * \param image_nr Image number for which to return the size
+ * \param p_size On success, size is returned in this variable
+ * \return e_XmountMorphError_None on success
+ */
+te_XmountOutputError XmountOutput_GetSize(pts_XmountOutputHandle p_h,
+                                           uint64_t *p_size);
+
+/*!
+ * \brief Read data from the morphed image
+ *
+ * Reads count bytes from the morphed image starting at given offset and
+ * copies the data into p_buf.
+ *
+ * The given buffer must be pre-allocated to hold as many bytes as should be
+ * read!
+ *
+ * \param p_h Output handle
+ * \param p_buf Buffer into which to copy read data
+ * \param offset Offset at which to start reading
+ * \param count Amount of bytes to read
+ * \param p_read On success, amount of bytes read is returned in this variable
+ * \return e_XmountMorphError_None on success
+ */
+te_XmountOutputError XmountOutput_ReadData(pts_XmountOutputHandle p_h,
+                                            char *p_buf,
+                                            uint64_t offset,
+                                            uint64_t count,
+                                            uint64_t *p_read);
+
+/*!
+ * \brief Writes data to the morphed image
+ *
+ * Writes count bytes from p_buf to the morphed image starting at the given
+ * offset.
+ *
+ * \param p_h Output handle
+ * \param p_buf Buffer with data to write
+ * \param offset Offset at which to start writing
+ * \param count Amount of bytes to write
+ * \param p_written On success, amount of bytes written is returned here
+ * \return e_XmountMorphError_None on success
+ */
+te_XmountOutputError XmountOutput_WriteData(pts_XmountOutputHandle p_h,
+                                             const char *p_buf,
+                                             uint64_t offset,
+                                             uint64_t count,
+                                             uint64_t *p_written);
+
+/*!
+ * \brief Get info text to be added to xmount's info file
+ *
+ * Generates a string containing informations about the currently morphed image.
+ *
+ * The caller must free the returned string.
+ *
+ * \param p_h Output handle
+ * \param pp_content Buffer in which text is returned
+ * \return e_XmountMorphError_None on success
+ */
+te_XmountOutputError XmountOutput_GetInfoFileContent(pts_XmountOutputHandle p_h,
+                                                      char **pp_content);
 
 #endif // XMOUNT_OUTPUT_H

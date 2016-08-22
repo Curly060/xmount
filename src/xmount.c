@@ -183,19 +183,10 @@ static void PrintUsage(char *p_prog_name) {
 #endif
   printf("      <otype> can be ");
 
-  // List supported output formats
-  first=1;
-  for(uint32_t i=0;i<glob_xmount.output.libs_count;i++) {
-    p_buf=glob_xmount.output.pp_libs[i]->p_supported_output_formats;
-    while(*p_buf!='\0') {
-      if(first==1) {
-        printf("\"%s\"",p_buf);
-        first=0;
-      } else printf(", \"%s\"",p_buf);
-      p_buf+=(strlen(p_buf)+1);
-    }
-  }
-  printf(".\n");
+  // List supported morphing functions
+  PRINTUSAGE__LIST_SUPP_LIB_TYPES(XmountOutput_GetSupportedTypes,
+                                  glob_xmount.h_output,
+                                  e_XmountOutputError_None);
 
   printf("    --outopts <oopts> : Specify output library specific "
            "options.\n");
@@ -237,21 +228,9 @@ static void PrintUsage(char *p_prog_name) {
   PRINTUSAGE__LIST_LIB_OPT_HELP(XmountMorphing_GetOptionsHelpText,
                                 glob_xmount.h_morphing,
                                 e_XmountMorphError_None);
-
-  for(uint32_t i=0;i<glob_xmount.output.libs_count;i++) {
-    ret=glob_xmount.output.pp_libs[i]->
-          lib_functions.OptionsHelp((const char**)&p_buf);
-    if(ret!=0) {
-      LOG_ERROR("Unable to get options help for library '%s': %s!\n",
-                glob_xmount.output.pp_libs[i]->p_name,
-                glob_xmount.output.pp_libs[i]->
-                  lib_functions.GetErrorMessage(ret));
-    }
-    if(p_buf==NULL) continue;
-    printf("  - %s\n",glob_xmount.output.pp_libs[i]->p_name);
-    printf("%s",p_buf);
-    printf("\n");
-  }
+  PRINTUSAGE__LIST_LIB_OPT_HELP(XmountOutput_GetOptionsHelpText,
+                                glob_xmount.h_output,
+                                e_XmountOutputError_None);
 
 #undef PRINTUSAGE__LIST_LIB_OPT_HELP
 #undef PRINTUSAGE__LIST_SUPPORTED_LIB_OPTS

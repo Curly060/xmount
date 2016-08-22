@@ -63,7 +63,7 @@ typedef struct s_XmountData {
   //! Cache file handle
   pts_XmountCacheHandle h_cache;
   //! Output image related data
-  ts_OutputData output;
+  pts_XmountOutputHandle h_output;
   //! Enable debug output
   uint8_t debug;
   //! Set if we are allowed to set fuse's allow_other option

@@ -118,6 +118,9 @@ te_XmountOutputError
 
   // Params check
   if(pp_h==NULL) return e_XmountOutputError_InvalidHandlePointer;
+
+  // TODO: Implement
+
 /*
   // Alloc new handle
   p_h=(pts_XmountOutputHandle)calloc(1,sizeof(ts_XmountOutputHandle));
@@ -130,6 +133,7 @@ te_XmountOutputError
   p_h->pp_lib_params=NULL;
   p_h->pp_images=NULL;
 */
+
   *pp_h=p_h;
   return e_XmountOutputError_None;
 }
@@ -139,6 +143,8 @@ te_XmountOutputError
  */
 te_XmountOutputError XmountOutput_DestroyHandle(pts_XmountOutputHandle *pp_h) {
   pts_XmountOutputHandle p_h=NULL;
+
+  // TODO: Implement
 /*
   // Params check
   if(pp_h==NULL) return e_XmountOutputError_InvalidHandlePointer;
@@ -186,6 +192,7 @@ te_XmountOutputError XmountOutput_EnableDebugging(pts_XmountOutputHandle p_h) {
   // Params check
   if(p_h==NULL) return e_XmountOutputError_InvalidHandle;
 
+  // Enable debugging
   p_h->debug=1;
   return e_XmountOutputError_None;
 }
@@ -194,8 +201,9 @@ te_XmountOutputError XmountOutput_EnableDebugging(pts_XmountOutputHandle p_h) {
  * XmountOutput_AddLibrary
  */
 te_XmountOutputError XmountOutput_AddLibrary(pts_XmountOutputHandle p_h,
-                                            const char *p_lib_name)
+                                             const char *p_lib_name)
 {
+  // TODO: Implement
 /*
   uint32_t supported_formats_len=0;
   t_LibXmount_Output_GetApiVersion pfun_input_GetApiVersion;
@@ -324,6 +332,7 @@ te_XmountOutputError XmountOutput_GetLibraryCount(pts_XmountOutputHandle p_h,
   if(p_h==NULL) return e_XmountOutputError_InvalidHandle;
   if(p_count==NULL) return e_XmountOutputError_InvalidBuffer;
 
+  // Return library count
   *p_count=p_h->libs_count;
   return e_XmountOutputError_None;
 }
@@ -331,8 +340,9 @@ te_XmountOutputError XmountOutput_GetLibraryCount(pts_XmountOutputHandle p_h,
 /*
  * XmountOutput_GetSupportedFormats
  */
-te_XmountOutputError XmountOutput_GetSupportedFormats(pts_XmountOutputHandle p_h,
-                                                     char **pp_formats)
+te_XmountOutputError
+  XmountOutput_GetSupportedFormats(pts_XmountOutputHandle p_h,
+                                   char **pp_formats)
 {
   char *p_buf=NULL;
   char *p_formats=NULL;
@@ -346,14 +356,14 @@ te_XmountOutputError XmountOutput_GetSupportedFormats(pts_XmountOutputHandle p_h
   // Loop over all loaded libs, extract supported formats and add to our vector
   // TODO: IMPROVEMENT: Final vector could be sorted
   for(uint32_t i=0;i<p_h->libs_count;i++) {
-    p_buf=p_h->pp_libs[i]->p_supported_input_types;
+    p_buf=p_h->pp_libs[i]->p_supported_output_formats;
     while(p_buf!=NULL && *p_buf!='\0') p_buf+=(strlen(p_buf)+1);
-    cur_len=(uint32_t)(p_buf-p_h->pp_libs[i]->p_supported_input_types);
+    cur_len=(uint32_t)(p_buf-p_h->pp_libs[i]->p_supported_output_formats);
     if(cur_len==0) continue;
     p_formats=(char*)realloc(p_formats,vector_len+cur_len);
     if(p_formats==NULL) return e_XmountOutputError_Alloc;
     memcpy(p_formats+vector_len,
-           p_h->pp_libs[i]->p_supported_input_types,
+           p_h->pp_libs[i]->p_supported_output_formats,
            cur_len);
     vector_len+=cur_len;
   }
@@ -371,7 +381,7 @@ te_XmountOutputError XmountOutput_GetSupportedFormats(pts_XmountOutputHandle p_h
  * XmountOutput_SetOptions
  */
 te_XmountOutputError XmountOutput_SetOptions(pts_XmountOutputHandle p_h,
-                                            char *p_options)
+                                             char *p_options)
 {
   // Params check
   if(p_h==NULL) return e_XmountOutputError_InvalidHandle;
@@ -440,7 +450,7 @@ te_XmountOutputError XmountOutput_GetOptionsHelpText(pts_XmountOutputHandle p_h,
  * XmountOutput_GetLibsInfoText
  */
 te_XmountOutputError XmountOutput_GetLibsInfoText(pts_XmountOutputHandle p_h,
-                                                 char **pp_info_text)
+                                                  char **pp_info_text)
 {
   char *p_buf=NULL;
   char *p_info_text=NULL;
@@ -459,7 +469,7 @@ te_XmountOutputError XmountOutput_GetLibsInfoText(pts_XmountOutputHandle p_h,
     XMOUNT_STRAPP(p_info_text," supporting ");
     XMOUNT_STRAPP(p_info_text,"    - ");
     XMOUNT_STRAPP(p_info_text,"    - ");
-    p_buf=p_h->pp_libs[i]->p_supported_input_types;
+    p_buf=p_h->pp_libs[i]->p_supported_output_types;
     first=1;
     while(*p_buf!='\0') {
       if(first==1) {
@@ -482,10 +492,20 @@ te_XmountOutputError XmountOutput_GetLibsInfoText(pts_XmountOutputHandle p_h,
 }
 
 /*
+ * XmountOutput_SetType
+ */
+te_XmountOutputError XmountOutput_SetType(pts_XmountOutputHandle p_h,
+                                          char *p_format)
+{
+  // TODO: Implement
+  return e_XmountOutputError_None;
+}
+
+/*
  * XmountOutput_Open
  */
 te_XmountOutputError XmountOutput_Open(pts_XmountOutputHandle p_h) {
-
+  // TODO: Implement
   return e_XmountOutputError_None;
 }
 
@@ -493,16 +513,23 @@ te_XmountOutputError XmountOutput_Open(pts_XmountOutputHandle p_h) {
  * XmountOutput_Close
  */
 te_XmountOutputError XmountOutput_Close(pts_XmountOutputHandle p_h) {
-
+  // TODO: Implement
   return e_XmountOutputError_None;
 }
+
+/*
+ * XmountOutput_GetOutputFilenames
+ */
+te_XmountOutputError
+  XmountOutput_GetOutputFilenames(pts_XmountOutputHandle p_h,
+                                  char ***ppp_output_files);
 
 /*
  * XmountOutput_GetSize
  */
 te_XmountOutputError XmountOutput_GetSize(pts_XmountOutputHandle p_h,
-                                         uint64_t image_nr,
-                                         uint64_t *p_size)
+                                          const char *p_output_filename,
+                                          uint64_t *p_size)
 {
 /*
   // Params check
@@ -512,6 +539,7 @@ te_XmountOutputError XmountOutput_GetSize(pts_XmountOutputHandle p_h,
 
   *p_size=p_h->pp_images[image_nr]->size;
 */
+  // TODO: Implement
   return e_XmountOutputError_None;
 }
 
@@ -519,12 +547,14 @@ te_XmountOutputError XmountOutput_GetSize(pts_XmountOutputHandle p_h,
  * XmountOutput_ReadData
  */
 te_XmountOutputError XmountOutput_ReadData(pts_XmountOutputHandle p_h,
-                                          uint64_t image_nr,
-                                          char *p_buf,
-                                          uint64_t offset,
-                                          uint64_t count,
-                                          uint64_t *p_read)
+                                           const char *p_output_filename,
+                                           char *p_buf,
+                                           uint64_t offset,
+                                           uint64_t count,
+                                           uint64_t *p_read)
 {
+  // TODO: Implement
+
 /*
   uint64_t to_read=0;
   int ret=0;
@@ -579,6 +609,7 @@ te_XmountOutputError XmountOutput_ReadData(pts_XmountOutputHandle p_h,
     return e_XmountOutputError_FailedReadingData;
   }
 */
+
   return e_XmountOutputError_None;
 }
 
@@ -586,10 +617,10 @@ te_XmountOutputError XmountOutput_ReadData(pts_XmountOutputHandle p_h,
  * XmountOutput_WriteData
  */
 te_XmountOutputError XmountOutput_WriteData(pts_XmountOutputHandle p_h,
-                                           uint64_t image_nr,
-                                           const char *p_buf,
-                                           uint64_t offset,
-                                           uint64_t count)
+                                            const char *p_output_filename,
+                                            const char *p_buf,
+                                            uint64_t offset,
+                                            uint64_t count)
 {
   // TODO: Implement
   return e_XmountOutputError_None;
@@ -602,6 +633,8 @@ te_XmountOutputError XmountOutput_GetInfoFileContent(pts_XmountOutputHandle p_h,
                                                     char **pp_content)
 {
   char *p_content=NULL;
+
+  // TODO: Implement
 
   *pp_content=p_content;
   return e_XmountOutputError_None;
@@ -616,6 +649,8 @@ te_XmountOutputError XmountOutput_GetInfoFileContent(pts_XmountOutputHandle p_h,
 te_XmountOutputError XmountOutput_FindLib(pts_XmountOutputHandle p_h,
                                          pts_XmountOutputImage p_input_image)
 {
+  // TODO: Implement
+
   // No library supporting input type found
   return e_XmountOutputError_UnsupportedFormat;
 }

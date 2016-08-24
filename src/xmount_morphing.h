@@ -201,7 +201,7 @@ te_XmountMorphError XmountMorphing_GetSupportedTypes(pts_XmountMorphHandle p_h,
 /*!
  * \brief Set library options
  *
- * Parses the given library option string (as given after --inopts).
+ * Parses the given library option string (as given after --morphopts).
  *
  * \param p_h Morphing handle
  * \param p_options Library option string

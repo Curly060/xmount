@@ -46,7 +46,6 @@
 #include "xmount_fuse.h"
 #include "md5.h"
 #include "macros.h"
-#include "../libxmount/libxmount.h"
 
 #define XMOUNT_COPYRIGHT_NOTICE \
   "xmount v%s Copyright (c) 2008-2016 by Gillen Daniel <gillen.dan@pinguin.lu>"
@@ -86,7 +85,6 @@ static int InitInfoFile();
  * Lib related
  */
 static int LoadLibs();
-static int FindOutputLib();
 /*
  * Functions exported to LibXmount_Morphing
  */
@@ -184,7 +182,7 @@ static void PrintUsage(char *p_prog_name) {
   printf("      <otype> can be ");
 
   // List supported morphing functions
-  PRINTUSAGE__LIST_SUPP_LIB_TYPES(XmountOutput_GetSupportedTypes,
+  PRINTUSAGE__LIST_SUPP_LIB_TYPES(XmountOutput_GetSupportedFormats,
                                   glob_xmount.h_output,
                                   e_XmountOutputError_None);
 
@@ -339,13 +337,13 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
   int i=1;
   int FuseMinusOControl=TRUE;
   int FuseAllowOther=TRUE;
-  int first;
   uint64_t buf;
   char *p_buf;
   char **pp_buf;
   int ret;
   te_XmountInput_Error input_ret=e_XmountInput_Error_None;
   te_XmountMorphError morph_ret=e_XmountMorphError_None;
+  te_XmountOutputError output_ret=e_XmountOutputError_None;
 
   // add pp_argv[0] to FUSE's argv
   XMOUNT_MALLOC(glob_xmount.pp_fuse_argv,char**,sizeof(char*));
@@ -432,7 +430,7 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
         if((i+1)<argc) {
           i++;
           XMOUNT_STRSET(glob_xmount.args.p_cache_file,pp_argv[i])
-          glob_xmount.output.writable=TRUE;
+          glob_xmount.args.writable=TRUE;
         } else {
           LOG_ERROR("You must specify a cache file!\n")
           return FALSE;
@@ -547,10 +545,11 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
         // Set output lib to use
         if((i+1)<argc) {
           i++;
-          if(glob_xmount.output.p_output_format==NULL) {
-            XMOUNT_STRSET(glob_xmount.output.p_output_format,pp_argv[i]);
-          } else {
-            LOG_ERROR("You can only specify --out once!")
+          output_ret=XmountOutput_SetFormat(glob_xmount.h_output,
+                                            pp_argv[i]);
+          if(output_ret!=e_XmountOutputError_None) {
+            LOG_ERROR("Unable to set output format: Error code %u!\n",
+                      output_ret);
             return FALSE;
           }
         } else {
@@ -561,18 +560,12 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
         // Set output lib options
         if((i+1)<argc) {
           i++;
-          if(glob_xmount.output.pp_lib_params==NULL) {
-            if(XmountLib_SplitLibParams(pp_argv[i],
-                                        &(glob_xmount.output.lib_params_count),
-                                        &(glob_xmount.output.pp_lib_params)
-                                       )==FALSE)
-            {
-              LOG_ERROR("Unable to parse output library options '%s'!\n",
-                        pp_argv[i]);
-              return FALSE;
-            }
-          } else {
-            LOG_ERROR("You can only specify --outopts once!")
+          output_ret=XmountOutput_SetOptions(glob_xmount.h_output,
+                                             pp_argv[i]);
+          if(output_ret!=e_XmountOutputError_None) {
+            LOG_ERROR("Unable to parse output library options: "
+                        "Error code %u!\n",
+                      output_ret);
             return FALSE;
           }
         } else {
@@ -585,7 +578,7 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
         if((i+1)<argc) {
           i++;
           XMOUNT_STRSET(glob_xmount.args.p_cache_file,pp_argv[i])
-          glob_xmount.output.writable=TRUE;
+          glob_xmount.args.writable=TRUE;
           glob_xmount.args.overwrite_cache=TRUE;
         } else {
           LOG_ERROR("You must specify a cache file!\n")
@@ -643,22 +636,12 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
                                            XmountMorphing_GetLibsInfoText,
                                            glob_xmount.h_morphing,
                                            e_XmountMorphError_None);
+        PARSECMDLINE__PRINT_LOADED_LIBINFO("  loaded output libraries:\n",
+                                           output_ret,
+                                           XmountOutput_GetLibsInfoText,
+                                           glob_xmount.h_output,
+                                           e_XmountOutputError_None);
 
-        printf("  loaded output libraries:\n");
-        for(uint32_t ii=0;ii<glob_xmount.output.libs_count;ii++) {
-          printf("    - %s supporting ",
-                 glob_xmount.output.pp_libs[ii]->p_name);
-          p_buf=glob_xmount.output.pp_libs[ii]->p_supported_output_formats;
-          first=TRUE;
-          while(*p_buf!='\0') {
-            if(first) {
-              printf("\"%s\"",p_buf);
-              first=FALSE;
-            } else printf(", \"%s\"",p_buf);
-            p_buf+=(strlen(p_buf)+1);
-          }
-          printf("\n");
-        }
         printf("\n");
         exit(0);
       } else {
@@ -732,6 +715,8 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
  * \return TRUE on success, FALSE on error
  */
 static int ExtractOutputFileNames(char *p_orig_name) {
+  // TODO: Reimplement in output lib
+/*
   char *tmp;
 
   // Truncate any leading path
@@ -743,20 +728,20 @@ static int ExtractOutputFileNames(char *p_orig_name) {
 
   // Set leading '/'
   XMOUNT_STRSET(glob_xmount.output.p_virtual_image_path,"/");
-  XMOUNT_STRSET(glob_xmount.output.p_info_path,"/");
+  XMOUNT_STRSET(glob_xmount.p_info_path,"/");
 
   // Copy filename
   if(tmp==NULL) {
     // Input image filename has no extension
     XMOUNT_STRAPP(glob_xmount.output.p_virtual_image_path,p_orig_name);
-    XMOUNT_STRAPP(glob_xmount.output.p_info_path,p_orig_name);
-    XMOUNT_STRAPP(glob_xmount.output.p_info_path,".info");
+    XMOUNT_STRAPP(glob_xmount.p_info_path,p_orig_name);
+    XMOUNT_STRAPP(glob_xmount.p_info_path,".info");
   } else {
     XMOUNT_STRNAPP(glob_xmount.output.p_virtual_image_path,p_orig_name,
                    strlen(p_orig_name)-strlen(tmp));
-    XMOUNT_STRNAPP(glob_xmount.output.p_info_path,p_orig_name,
+    XMOUNT_STRNAPP(glob_xmount.p_info_path,p_orig_name,
                    strlen(p_orig_name)-strlen(tmp));
-    XMOUNT_STRAPP(glob_xmount.output.p_info_path,".info");
+    XMOUNT_STRAPP(glob_xmount.p_info_path,".info");
   }
 
   // Add virtual file extensions
@@ -766,8 +751,9 @@ static int ExtractOutputFileNames(char *p_orig_name) {
   LOG_DEBUG("Set virtual image name to \"%s\"\n",
             glob_xmount.output.p_virtual_image_path);
   LOG_DEBUG("Set virtual image info name to \"%s\"\n",
-            glob_xmount.output.p_info_path);
-  return TRUE;
+            glob_xmount.p_info_path);
+*/
+  return FALSE;
 }
 
 //! Calculates an MD5 hash of the first HASH_AMOUNT bytes of the input image
@@ -817,10 +803,10 @@ static int InitInfoFile() {
   te_XmountMorphError morph_ret=e_XmountMorphError_None;
 
   // Start with static input header
-  XMOUNT_MALLOC(glob_xmount.output.p_info_file,
+  XMOUNT_MALLOC(glob_xmount.p_info_file,
                 char*,
                 strlen(IMAGE_INFO_INPUT_HEADER)+1);
-  strncpy(glob_xmount.output.p_info_file,
+  strncpy(glob_xmount.p_info_file,
           IMAGE_INFO_INPUT_HEADER,
           strlen(IMAGE_INFO_INPUT_HEADER)+1);
 
@@ -830,7 +816,7 @@ static int InitInfoFile() {
     LOG_ERROR(err_msg "Error code %u!\n",libret);                        \
     return FALSE;                                                        \
   }                                                                      \
-  XMOUNT_STRAPP(glob_xmount.output.p_info_file,p_buf);                   \
+  XMOUNT_STRAPP(glob_xmount.p_info_file,p_buf);                   \
   XMOUNT_FREE(p_buf);                                                    \
 } while(0)
 
@@ -842,7 +828,7 @@ static int InitInfoFile() {
                             "Unable to get info file content from input lib: ");
 
   // Add static morphing header
-  XMOUNT_STRAPP(glob_xmount.output.p_info_file,IMAGE_INFO_MORPHING_HEADER);
+  XMOUNT_STRAPP(glob_xmount.p_info_file,IMAGE_INFO_MORPHING_HEADER);
 
   // Get and add infos from morphing lib
   INITINFOFILE__GET_CONTENT(morph_ret,
@@ -864,20 +850,12 @@ static int InitInfoFile() {
 static int LoadLibs() {
   DIR *p_dir=NULL;
   struct dirent *p_dirent=NULL;
-  int base_library_path_len=0;
-  char *p_library_path=NULL;
-  void *p_libxmount=NULL;
-  t_LibXmount_Output_GetApiVersion pfun_output_GetApiVersion;
-  t_LibXmount_Output_GetSupportedFormats pfun_output_GetSupportedFormats;
-  t_LibXmount_Output_GetFunctions pfun_output_GetFunctions;
-  const char *p_supported_formats=NULL;
-  const char *p_buf;
-  uint32_t supported_formats_len=0;
   uint32_t input_lib_count=0;
   uint32_t morphing_lib_count=0;
-  pts_OutputLib p_output_lib=NULL;
+  uint32_t output_lib_count=0;
   te_XmountInput_Error input_ret=e_XmountInput_Error_None;
   te_XmountMorphError morph_ret=e_XmountMorphError_None;
+  te_XmountOutputError output_ret=e_XmountOutputError_None;
 
   LOG_DEBUG("Searching for xmount libraries in '%s'.\n",
             XMOUNT_LIBRARY_PATH);
@@ -890,46 +868,9 @@ static int LoadLibs() {
     return FALSE;
   }
 
-  // Construct base library path
-  base_library_path_len=strlen(XMOUNT_LIBRARY_PATH);
-  XMOUNT_STRSET(p_library_path,XMOUNT_LIBRARY_PATH);
-  if(XMOUNT_LIBRARY_PATH[base_library_path_len]!='/') {
-    base_library_path_len++;
-    XMOUNT_STRAPP(p_library_path,"/");
-  }
-
-#define LIBXMOUNT_LOAD(path) {                            \
-  p_libxmount=dlopen(path,RTLD_NOW);                      \
-  if(p_libxmount==NULL) {                                 \
-    LOG_ERROR("Unable to load input library '%s': %s!\n", \
-              path,                                       \
-              dlerror());                                 \
-    continue;                                             \
-  }                                                       \
-}
-#define LIBXMOUNT_LOAD_SYMBOL(name,pfun) {                       \
-  if((pfun=dlsym(p_libxmount,name))==NULL) {                     \
-    LOG_ERROR("Unable to load symbol '%s' from library '%s'!\n", \
-              name,                                              \
-              p_library_path);                                   \
-    dlclose(p_libxmount);                                        \
-    p_libxmount=NULL;                                            \
-    continue;                                                    \
-  }                                                              \
-}
-
   // Loop over lib dir
   while((p_dirent=readdir(p_dir))!=NULL) {
     LOG_DEBUG("Trying to load '%s'\n",p_dirent->d_name);
-
-    // Construct full path to found object
-    p_library_path=realloc(p_library_path,
-                           base_library_path_len+strlen(p_dirent->d_name)+1);
-    if(p_library_path==NULL) {
-      LOG_ERROR("Couldn't allocate memory!\n");
-      exit(1);
-    }
-    strcpy(p_library_path+base_library_path_len,p_dirent->d_name);
 
     if(strncmp(p_dirent->d_name,
                XMOUNT_INPUT_LIBRARY_NAMING_SCHEME,
@@ -958,85 +899,14 @@ static int LoadLibs() {
       }
     } if(strncmp(p_dirent->d_name,"libxmount_output_",17)==0) {
       // Found possible output lib. Try to load it
-      LIBXMOUNT_LOAD(p_library_path);
-
-      // Load library symbols
-      LIBXMOUNT_LOAD_SYMBOL("LibXmount_Output_GetApiVersion",
-                            pfun_output_GetApiVersion);
-
-      // Check library's API version
-      if(pfun_output_GetApiVersion()!=LIBXMOUNT_OUTPUT_API_VERSION) {
-        LOG_DEBUG("Failed! Wrong API version.\n");
-        LOG_ERROR("Unable to load output library '%s'. Wrong API version\n",
-                  p_library_path);
-        dlclose(p_libxmount);
+      output_ret=XmountOutput_AddLibrary(glob_xmount.h_output,
+                                         p_dirent->d_name);
+      if(output_ret!=e_XmountOutputError_None) {
+        LOG_ERROR("Unable to add output library '%s': Error code %u!\n",
+                  p_dirent->d_name,
+                  output_ret);
         continue;
       }
-
-      LIBXMOUNT_LOAD_SYMBOL("LibXmount_Output_GetSupportedFormats",
-                            pfun_output_GetSupportedFormats);
-      LIBXMOUNT_LOAD_SYMBOL("LibXmount_Output_GetFunctions",
-                            pfun_output_GetFunctions);
-
-      // Construct new entry for our library list
-      XMOUNT_MALLOC(p_output_lib,pts_OutputLib,sizeof(ts_OutputLib));
-      // Initialize lib_functions structure to NULL
-      memset(&(p_output_lib->lib_functions),
-             0,
-             sizeof(ts_LibXmountOutput_Functions));
-
-      // Set name and handle
-      XMOUNT_STRSET(p_output_lib->p_name,p_dirent->d_name);
-      p_output_lib->p_lib=p_libxmount;
-
-      // Get and set supported types
-      p_supported_formats=pfun_output_GetSupportedFormats();
-      supported_formats_len=0;
-      p_buf=p_supported_formats;
-      while(*p_buf!='\0') {
-        supported_formats_len+=(strlen(p_buf)+1);
-        p_buf+=(strlen(p_buf)+1);
-      }
-      supported_formats_len++;
-      XMOUNT_MALLOC(p_output_lib->p_supported_output_formats,
-                    char*,
-                    supported_formats_len);
-      memcpy(p_output_lib->p_supported_output_formats,
-             p_supported_formats,
-             supported_formats_len);
-
-      // Get, set and check lib_functions
-      pfun_output_GetFunctions(&(p_output_lib->lib_functions));
-      if(p_output_lib->lib_functions.CreateHandle==NULL ||
-         p_output_lib->lib_functions.DestroyHandle==NULL ||
-         p_output_lib->lib_functions.Transform==NULL ||
-         p_output_lib->lib_functions.Size==NULL ||
-         p_output_lib->lib_functions.Read==NULL ||
-         p_output_lib->lib_functions.Write==NULL ||
-         p_output_lib->lib_functions.OptionsHelp==NULL ||
-         p_output_lib->lib_functions.OptionsParse==NULL ||
-         p_output_lib->lib_functions.GetInfofileContent==NULL ||
-         p_output_lib->lib_functions.GetErrorMessage==NULL ||
-         p_output_lib->lib_functions.FreeBuffer==NULL)
-      {
-        LOG_DEBUG("Missing implemention of one or more functions in lib %s!\n",
-                  p_dirent->d_name);
-        free(p_output_lib->p_supported_output_formats);
-        free(p_output_lib->p_name);
-        free(p_output_lib);
-        dlclose(p_libxmount);
-        continue;
-      }
-
-      // Add entry to the input library list
-      XMOUNT_REALLOC(glob_xmount.output.pp_libs,
-                     pts_OutputLib*,
-                     sizeof(pts_OutputLib)*
-                       (glob_xmount.output.libs_count+1));
-      glob_xmount.output.pp_libs[glob_xmount.output.libs_count++]=
-        p_output_lib;
-
-      LOG_DEBUG("Output library '%s' loaded successfully\n",p_dirent->d_name);
     } else {
       LOG_DEBUG("Ignoring '%s'.\n",p_dirent->d_name);
       continue;
@@ -1056,7 +926,14 @@ static int LoadLibs() {
                                            &morphing_lib_count);
   if(morph_ret!=e_XmountMorphError_None) {
     LOG_ERROR("Unable to get morphing library count: Error code %u!\n",
-              input_ret);
+              morph_ret);
+    return FALSE;
+  }
+  output_ret=XmountOutput_GetLibraryCount(glob_xmount.h_output,
+                                          &output_lib_count);
+  if(output_ret!=e_XmountOutputError_None) {
+    LOG_ERROR("Unable to get output library count: Error code %u!\n",
+              output_ret);
     return FALSE;
   }
 
@@ -1064,56 +941,23 @@ static int LoadLibs() {
               "were loaded.\n",
             input_lib_count,
             morphing_lib_count,
-            glob_xmount.output.libs_count);
+            output_lib_count);
 
-  free(p_library_path);
   closedir(p_dir);
   return ((input_lib_count>0 &&
            morphing_lib_count>0 &&
-           glob_xmount.output.libs_count>0) ? TRUE : FALSE);
-}
-
-//! Search an appropriate output lib for the specified output format
-/*!
- * \return TRUE on success, FALSE on error
- */
-static int FindOutputLib() {
-  char *p_buf;
-
-  LOG_DEBUG("Trying to find suitable library for output format '%s'.\n",
-            glob_xmount.output.p_output_format);
-
-  // Loop over all loaded output libs
-  for(uint32_t i=0;i<glob_xmount.output.libs_count;i++) {
-    LOG_DEBUG("Checking output library %s\n",
-              glob_xmount.output.pp_libs[i]->p_name);
-    p_buf=glob_xmount.output.pp_libs[i]->p_supported_output_formats;
-    while(*p_buf!='\0') {
-      if(strcmp(p_buf,glob_xmount.output.p_output_format)==0) {
-        // Library supports output type, set lib functions
-        LOG_DEBUG("Output library '%s' pretends to handle that output format.\n",
-                  glob_xmount.output.pp_libs[i]->p_name);
-        glob_xmount.output.p_functions=
-          &(glob_xmount.output.pp_libs[i]->lib_functions);
-        return TRUE;
-      }
-      p_buf+=(strlen(p_buf)+1);
-    }
-  }
-
-  LOG_DEBUG("Couldn't find any suitable library.\n");
-
-  // No library supporting output format found
-  return FALSE;
+           output_lib_count>0) ? TRUE : FALSE);
 }
 
 static int InitResources() {
   te_XmountInput_Error input_ret=e_XmountInput_Error_None;
   te_XmountMorphError morph_ret=e_XmountMorphError_None;
+  te_XmountOutputError output_ret=e_XmountOutputError_None;
 
   // Args
   glob_xmount.args.overwrite_cache=FALSE;
   glob_xmount.args.p_cache_file=NULL;
+  glob_xmount.args.writable=FALSE;
 
   // Input
   input_ret=XmountInput_CreateHandle(&(glob_xmount.h_input));
@@ -1137,21 +981,14 @@ static int InitResources() {
   glob_xmount.h_cache=NULL;
 
   // Output
-  glob_xmount.output.libs_count=0;
-  glob_xmount.output.pp_libs=NULL;
-  glob_xmount.output.p_output_format=NULL;
-  glob_xmount.output.lib_params_count=0;
-  glob_xmount.output.pp_lib_params=NULL;
-  glob_xmount.output.p_handle=NULL;
-  glob_xmount.output.p_functions=NULL;
-  glob_xmount.output.input_functions.Size=&LibXmount_Output_Size;
-  glob_xmount.output.input_functions.Read=&LibXmount_Output_Read;
-  glob_xmount.output.input_functions.Write=&LibXmount_Output_Write;
-  glob_xmount.output.image_size=0;
-  glob_xmount.output.writable=FALSE;
-  glob_xmount.output.p_virtual_image_path=NULL;
-  glob_xmount.output.p_info_path=NULL;
-  glob_xmount.output.p_info_file=NULL;
+  output_ret=XmountOutput_CreateHandle(&(glob_xmount.h_output),
+                                       &LibXmount_Output_Size,
+                                       &LibXmount_Output_Read,
+                                       &LibXmount_Output_Write);
+  if(output_ret!=e_XmountOutputError_None) {
+    LOG_ERROR("Unable to create output handle: Error code %u!\n",output_ret);
+    return FALSE;
+  }
 
   // Misc data
   glob_xmount.debug=FALSE;
@@ -1160,6 +997,8 @@ static int InitResources() {
   glob_xmount.pp_fuse_argv=NULL;
   glob_xmount.p_mountpoint=NULL;
   glob_xmount.p_first_input_image_name=NULL;
+  glob_xmount.p_info_path=NULL;
+  glob_xmount.p_info_file=NULL;
   glob_xmount.image_hash_lo=0;
   glob_xmount.image_hash_hi=0;
 
@@ -1174,6 +1013,7 @@ static void FreeResources() {
   te_XmountInput_Error input_ret=e_XmountInput_Error_None;
   te_XmountMorphError morph_ret=e_XmountMorphError_None;
   te_XmountCache_Error cache_ret=e_XmountCache_Error_None;
+  te_XmountOutputError output_ret=e_XmountOutputError_None;
 
   LOG_DEBUG("Freeing all resources\n");
 
@@ -1182,50 +1022,21 @@ static void FreeResources() {
     XMOUNT_FREE(glob_xmount.p_first_input_image_name);
   }
   if(glob_xmount.pp_fuse_argv!=NULL) {
-    for(int i=0;i<glob_xmount.fuse_argc;i++) free(glob_xmount.pp_fuse_argv[i]);
-    free(glob_xmount.pp_fuse_argv);
+    for(int i=0;i<glob_xmount.fuse_argc;i++) {
+      XMOUNT_FREE(glob_xmount.pp_fuse_argv[i]);
+    }
+    XMOUNT_FREE(glob_xmount.pp_fuse_argv);
   }
-  if(glob_xmount.p_mountpoint!=NULL) free(glob_xmount.p_mountpoint);
+  if(glob_xmount.p_mountpoint!=NULL) XMOUNT_FREE(glob_xmount.p_mountpoint);
+  if(glob_xmount.p_info_path!=NULL) XMOUNT_FREE(glob_xmount.p_info_path);
+  if(glob_xmount.p_info_file!=NULL) XMOUNT_FREE(glob_xmount.p_info_file);
 
   // Output
-  if(glob_xmount.output.p_functions!=NULL) {
-    if(glob_xmount.output.p_handle!=NULL) {
-      // Destroy output handle
-      ret=glob_xmount.output.p_functions->
-            DestroyHandle(&(glob_xmount.output.p_handle));
-      if(ret!=0) {
-        LOG_ERROR("Unable to destroy output handle: %s!\n",
-                  glob_xmount.output.p_functions->GetErrorMessage(ret));
-      }
-    }
+  output_ret=XmountOutput_DestroyHandle(&(glob_xmount.h_output));
+  if(output_ret!=e_XmountOutputError_None) {
+    LOG_ERROR("Unable to destroy output handle: Error code %u: Ignoring!\n",
+              output_ret);
   }
-  if(glob_xmount.output.pp_lib_params!=NULL) {
-    for(uint32_t i=0;i<glob_xmount.output.lib_params_count;i++)
-      free(glob_xmount.output.pp_lib_params[i]);
-    free(glob_xmount.output.pp_lib_params);
-  }
-  if(glob_xmount.output.p_output_format!=NULL)
-    free(glob_xmount.output.p_output_format);
-  if(glob_xmount.output.pp_libs!=NULL) {
-    // Unload output libs
-    for(uint32_t i=0;i<glob_xmount.output.libs_count;i++) {
-      if(glob_xmount.output.pp_libs[i]==NULL) continue;
-      if(glob_xmount.output.pp_libs[i]->p_supported_output_formats!=NULL)
-        free(glob_xmount.output.pp_libs[i]->p_supported_output_formats);
-      if(glob_xmount.output.pp_libs[i]->p_lib!=NULL)
-        dlclose(glob_xmount.output.pp_libs[i]->p_lib);
-      if(glob_xmount.output.pp_libs[i]->p_name!=NULL)
-        free(glob_xmount.output.pp_libs[i]->p_name);
-      free(glob_xmount.output.pp_libs[i]);
-    }
-    free(glob_xmount.output.pp_libs);
-  }
-  if(glob_xmount.output.p_info_path!=NULL)
-    free(glob_xmount.output.p_info_path);
-  if(glob_xmount.output.p_info_file!=NULL)
-    free(glob_xmount.output.p_info_file);
-  if(glob_xmount.output.p_virtual_image_path!=NULL)
-    free(glob_xmount.output.p_virtual_image_path);
 
   // Cache
   if(glob_xmount.h_cache!=NULL) {
@@ -1263,6 +1074,7 @@ static void FreeResources() {
 
   // Before we return, initialize everything in case ReleaseResources would be
   // called again.
+  // TODO: This is bad as it will re-create handles etc... Get rid of it!!
   InitResources();
 }
 
@@ -1444,7 +1256,7 @@ static int LibXmount_Output_Read(char *p_buf,
 
     // Determine if we have to read cached data
     is_block_cached=FALSE;
-    if(glob_xmount.output.writable==TRUE) {
+    if(glob_xmount.args.writable==TRUE) {
       cache_ret=XmountCache_IsBlockCached(glob_xmount.h_cache,cur_block);
       if(cache_ret==e_XmountCache_Error_None) is_block_cached=TRUE;
       else if(cache_ret!=e_XmountCache_Error_UncachedBlock) {
@@ -1664,6 +1476,7 @@ int main(int argc, char *argv[]) {
   te_XmountInput_Error input_ret=e_XmountInput_Error_None;
   te_XmountMorphError morph_ret=e_XmountMorphError_None;
   //te_XmountCache_Error cache_ret=e_XmountCache_Error_None;
+  te_XmountOutputError output_ret=e_XmountOutputError_None;
 
   // Set implemented FUSE functions
   struct fuse_operations xmount_operations = {
@@ -1771,7 +1584,7 @@ int main(int argc, char *argv[]) {
   }
 
   // Open / Create cache if needed
-  if(glob_xmount.output.writable) {
+  if(glob_xmount.args.writable) {
     // Init cache file and cache file block index
     // TODO: Add cache file creration / opening
 /*
@@ -1815,56 +1628,12 @@ int main(int argc, char *argv[]) {
     printf("\n");
   }
 
-  if(!ExtractOutputFileNames(glob_xmount.p_first_input_image_name)) {
-    LOG_ERROR("Couldn't extract virtual file names!\n");
+  // Transform morphed image into output format
+  output_ret=XmountOutput_Transform(glob_xmount.h_output);
+  if(output_ret!=e_XmountOutputError_None) {
+    LOG_ERROR("Unable to transform output image: Error code %u!\n",output_ret);
     FreeResources();
     return 1;
-  }
-  LOG_DEBUG("Virtual file names extracted successfully\n")
-
-  // Find output lib
-  if(FindOutputLib()!=TRUE) {
-    LOG_ERROR("Unable to find a library supporting the output format '%s'!\n",
-              glob_xmount.output.p_output_format);
-    FreeResources();
-    return 1;
-  }
-
-  // Init output
-  ret=glob_xmount.output.p_functions->
-        CreateHandle(&glob_xmount.output.p_handle,
-                     glob_xmount.output.p_output_format,
-                     glob_xmount.debug);
-  if(ret!=0) {
-    LOG_ERROR("Unable to create output handle: %s!\n",
-              glob_xmount.output.p_functions->GetErrorMessage(ret));
-    FreeResources();
-    return 1;
-  }
-
-  // Parse output lib specific options
-  if(glob_xmount.output.pp_lib_params!=NULL) {
-    p_err_msg=NULL;
-    ret=glob_xmount.output.p_functions->
-          OptionsParse(glob_xmount.output.p_handle,
-                       glob_xmount.output.lib_params_count,
-                       glob_xmount.output.pp_lib_params,
-                       (const char**)&p_err_msg);
-    if(ret!=0) {
-      if(p_err_msg!=NULL) {
-        LOG_ERROR("Unable to parse output library specific options: %s: %s!\n",
-                  glob_xmount.output.p_functions->GetErrorMessage(ret),
-                  p_err_msg);
-        glob_xmount.output.p_functions->FreeBuffer(p_err_msg);
-        FreeResources();
-        return 1;
-      } else {
-        LOG_ERROR("Unable to parse output library specific options: %s!\n",
-                  glob_xmount.output.p_functions->GetErrorMessage(ret));
-        FreeResources();
-        return 1;
-      }
-    }
   }
 
   // Gather infos for info file

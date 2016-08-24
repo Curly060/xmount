@@ -23,6 +23,8 @@
  ******************************************************************************/
 //! Naming scheme of morphing libraries
 #define XMOUNT_OUTPUT_LIBRARY_NAMING_SCHEME "libxmount_output_"
+//! Default output format
+#define XMOUNT_OUTPUT_DEFAULT_OUTPUT_FORMAT "raw"
 
 /*******************************************************************************
  * Public types / structures / enums
@@ -85,27 +87,29 @@ typedef enum e_XmountOutputError {
   e_XmountOutputError_InvalidBuffer,
   //! A given string is invalid
   e_XmountOutputError_InvalidString,
-/*
   //! Library options have already been set
-  e_XmountMorphError_LibOptionsAlreadySet,
+  e_XmountOutputError_LibOptionsAlreadySet,
   //! Library options couldn't be parsed
-  e_XmountMorphError_FailedParsingOptions,
+  e_XmountOutputError_FailedParsingOptions,
+/*
   //! Unable to get info file content from library
   e_XmountMorphError_FailedGettingInfoFileContent,
+*/
   //! Unable to load library file
-  e_XmountMorphError_FailedLoadingLibrary,
+  e_XmountOutputError_FailedLoadingLibrary,
   //! Unable to load a library symbol
-  e_XmountMorphError_FailedLoadingSymbol,
+  e_XmountOutputError_FailedLoadingSymbol,
   //! Library has wrong API version
-  e_XmountMorphError_WrongLibraryApiVersion,
+  e_XmountOutputError_WrongLibraryApiVersion,
   //! Library is missing a function
-  e_XmountMorphError_MissingLibraryFunction,
-  //! Unsupported morphing type
-  e_XmountMorphError_UnsupportedType,
-  //! Unable to create morphing image handle
-  e_XmountMorphError_FailedCreatingMorphHandle,
-  //! Unable to parse morphing library options
-  e_XmountMorphError_FailedParsingLibParams,
+  e_XmountOutputError_MissingLibraryFunction,
+  //! Unsupported output format
+  e_XmountOutputError_UnsupportedFormat,
+  //! Unable to create output library handle
+  e_XmountOutputError_FailedCreatingOutputHandle,
+  //! Unable to parse output library options
+  e_XmountOutputError_FailedParsingLibParams,
+/*
   //! Unable to get image size
   e_XmountMorphError_FailedGettingImageSize,
   //! A specified offset is larger than the image
@@ -242,8 +246,8 @@ te_XmountOutputError XmountOutput_GetLibsInfoText(pts_XmountOutputHandle p_h,
  * \param p_type Output format string as specified with xmount's --out option.
  * \return e_XmountMorphError_None on success
  */
-te_XmountOutputError XmountOutput_SetType(pts_XmountOutputHandle p_h,
-                                          char *p_format);
+te_XmountOutputError XmountOutput_SetFormat(pts_XmountOutputHandle p_h,
+                                            char *p_format);
 
 /*!
  * \brief Generate output image
@@ -253,17 +257,7 @@ te_XmountOutputError XmountOutput_SetType(pts_XmountOutputHandle p_h,
  * \param p_h Output handle
  * \return e_XmountMorphError_None on success
  */
-te_XmountOutputError XmountOutput_Open(pts_XmountOutputHandle p_h);
-
-/*!
- * \brief Destroy output image
- *
- * Frees what was necessary to use the output image.
- *
- * \param p_h Output handle
- * \return e_XmountMorphError_None on success
- */
-te_XmountOutputError XmountOutput_Close(pts_XmountOutputHandle p_h);
+te_XmountOutputError XmountOutput_Transform(pts_XmountOutputHandle p_h);
 
 /*!
  * \brief Returns an array containing all output files names

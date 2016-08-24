@@ -488,7 +488,9 @@ te_XmountMorphError XmountMorphing_SetType(pts_XmountMorphHandle p_h,
   if(p_h==NULL) return e_XmountMorphError_InvalidHandle;
   if(p_type==NULL) return e_XmountMorphError_InvalidString;
 
+  // Set morphing type
   XMOUNT_STRSET(p_h->p_morph_type,p_type);
+
   return e_XmountMorphError_None;
 }
 
@@ -543,7 +545,7 @@ te_XmountMorphError XmountMorphing_StartMorphing(pts_XmountMorphHandle p_h) {
         LOG_ERROR("Unable to parse morphing library specific options: %s!\n",
                   p_h->p_functions->GetErrorMessage(ret));
       }
-      return e_XmountInput_Error_FailedParsingLibParams;
+      return e_XmountMorphError_FailedParsingLibParams;
     }
   }
 

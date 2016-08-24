@@ -49,7 +49,8 @@ typedef int (*tfun_XmountMorphing_InputImageCount)(uint64_t *p_count);
  * \param p_size Pointer to store input image's size to
  * \return 0 on success
  */
-typedef int (*tfun_XmountMorphing_InputImageSize)(uint64_t image, uint64_t *p_size);
+typedef int (*tfun_XmountMorphing_InputImageSize)(uint64_t image,
+                                                  uint64_t *p_size);
 
 //! Function to read data from input image
 /*!

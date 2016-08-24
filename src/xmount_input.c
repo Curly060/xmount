@@ -177,6 +177,7 @@ te_XmountInput_Error XmountInput_DestroyHandle(pts_XmountInputHandle *pp_h) {
     p_h->lib_params_count=0;
   }
 
+  *pp_h=NULL;
   return e_XmountInput_Error_None;
 }
 

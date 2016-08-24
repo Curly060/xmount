@@ -21,6 +21,7 @@
 #ifndef XMOUNT_H
 #define XMOUNT_H
 
+#include "../libxmount/libxmount.h"
 #include "xmount_input.h"
 #include "xmount_morphing.h"
 #include "xmount_cache.h"
@@ -50,6 +51,8 @@ typedef struct s_XmountArgs {
   char *p_cache_file;
   //! If set to 1, overwrite any existing cache file
   uint8_t overwrite_cache;
+  //! Writable? (Set to 1 if --cache was specified)
+  uint8_t writable;
 } ts_XmountArgs;
 
 //! Structure containing global xmount runtime infos
@@ -76,6 +79,10 @@ typedef struct s_XmountData {
   char *p_mountpoint;
   //! First input image's path/name
   char *p_first_input_image_name;
+  //! Path of virtual image info file
+  char *p_info_path;
+  //! Pointer to virtual info file
+  char *p_info_file;
   //! MD5 hash of partial input image (lower 64 bit) (after morph)
   uint64_t image_hash_lo;
   //! MD5 hash of partial input image (higher 64 bit) (after morph)

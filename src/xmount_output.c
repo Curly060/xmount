@@ -74,14 +74,8 @@ typedef struct s_XmountOutputHandle {
   ts_LibXmountOutput_Functions output_functions;
   //! Size
   uint64_t image_size;
-  //! Writable? (Set to 1 if --cache was specified)
-  uint8_t writable;
   //! Path of virtual image file
   char *p_virtual_image_path;
-  //! Path of virtual image info file
-  char *p_info_path;
-  //! Pointer to virtual info file
-  char *p_info_file;
   //! Debug
   uint8_t debug;
 } ts_XmountOutputHandle;
@@ -119,9 +113,6 @@ te_XmountOutputError
   // Params check
   if(pp_h==NULL) return e_XmountOutputError_InvalidHandlePointer;
 
-  // TODO: Implement
-
-/*
   // Alloc new handle
   p_h=(pts_XmountOutputHandle)calloc(1,sizeof(ts_XmountOutputHandle));
   if(p_h==NULL) {
@@ -130,9 +121,14 @@ te_XmountOutputError
 
   // Init values
   p_h->pp_libs=NULL;
+  p_h->p_output_format=NULL;
   p_h->pp_lib_params=NULL;
-  p_h->pp_images=NULL;
-*/
+  p_h->p_handle=NULL;
+  p_h->p_functions=NULL;
+  p_h->output_functions.Size=p_img_size;
+  p_h->output_functions.Read=p_img_read;
+  p_h->output_functions.Write=p_img_write;
+  p_h->p_virtual_image_path=NULL;
 
   *pp_h=p_h;
   return e_XmountOutputError_None;
@@ -142,46 +138,48 @@ te_XmountOutputError
  * XmountOutput_DestroyHandle
  */
 te_XmountOutputError XmountOutput_DestroyHandle(pts_XmountOutputHandle *pp_h) {
+  int ret=0;
   pts_XmountOutputHandle p_h=NULL;
 
-  // TODO: Implement
-/*
   // Params check
   if(pp_h==NULL) return e_XmountOutputError_InvalidHandlePointer;
   if(*pp_h==NULL) return e_XmountOutputError_InvalidHandle;
   p_h=*pp_h;
 
   // Free resources
-  if(p_h->images_count!=0 && p_h->pp_images!=NULL) {
-    // TODO: Close images
-  }
-  if(p_h->libs_count>0 && p_h->pp_libs!=NULL) {
-    // Unload all input libs
-    for(uint32_t i=0;i<p_h->libs_count;i++) {
-      if(p_h->pp_libs[i]->p_supported_input_types!=NULL) {
-        XMOUNT_FREE(p_h->pp_libs[i]->p_supported_input_types);
+  if(p_h->p_functions!=NULL) {
+    if(p_h->p_handle!=NULL) {
+      // Destroy output handle
+      ret=p_h->p_functions->DestroyHandle(&(p_h->p_handle));
+      if(ret!=0) {
+        LOG_ERROR("Unable to destroy output handle: %s!\n",
+                  p_h->p_functions->GetErrorMessage(ret));
       }
-      if(p_h->pp_libs[i]->p_lib!=NULL) {
-        dlclose(p_h->pp_libs[i]->p_lib);
-        p_h->pp_libs[i]->p_lib=NULL;
-      }
-      if(p_h->pp_libs[i]->p_name!=NULL) {
-        XMOUNT_FREE(p_h->pp_libs[i]->p_name);
-      }
-      XMOUNT_FREE(p_h->pp_libs[i]);
     }
-    XMOUNT_FREE(p_h->pp_libs);
-    p_h->libs_count=0;
   }
-  if(p_h->lib_params_count!=0 && p_h->pp_lib_params!=NULL) {
-    // Free library parameter array
+  if(p_h->pp_lib_params!=NULL) {
     for(uint32_t i=0;i<p_h->lib_params_count;i++) {
       XMOUNT_FREE(p_h->pp_lib_params[i]);
     }
     XMOUNT_FREE(p_h->pp_lib_params);
-    p_h->lib_params_count=0;
   }
-*/
+  if(p_h->p_output_format!=NULL) XMOUNT_FREE(p_h->p_output_format);
+  if(p_h->pp_libs!=NULL) {
+    // Unload output libs
+    for(uint32_t i=0;i<p_h->libs_count;i++) {
+      if(p_h->pp_libs[i]==NULL) continue;
+      if(p_h->pp_libs[i]->p_supported_output_formats!=NULL) {
+        XMOUNT_FREE(p_h->pp_libs[i]->p_supported_output_formats);
+      }
+      if(p_h->pp_libs[i]->p_lib!=NULL) dlclose(p_h->pp_libs[i]->p_lib);
+      if(p_h->pp_libs[i]->p_name!=NULL) XMOUNT_FREE(p_h->pp_libs[i]->p_name);
+      XMOUNT_FREE(p_h->pp_libs[i]);
+    }
+    XMOUNT_FREE(p_h->pp_libs);
+  }
+  if(p_h->p_virtual_image_path!=NULL) XMOUNT_FREE(p_h->p_virtual_image_path);
+
+  *pp_h=NULL;
   return e_XmountOutputError_None;
 }
 
@@ -203,14 +201,12 @@ te_XmountOutputError XmountOutput_EnableDebugging(pts_XmountOutputHandle p_h) {
 te_XmountOutputError XmountOutput_AddLibrary(pts_XmountOutputHandle p_h,
                                              const char *p_lib_name)
 {
-  // TODO: Implement
-/*
   uint32_t supported_formats_len=0;
-  t_LibXmount_Output_GetApiVersion pfun_input_GetApiVersion;
-  t_LibXmount_Output_GetSupportedFormats pfun_input_GetSupportedFormats;
-  t_LibXmount_Output_GetFunctions pfun_input_GetFunctions;
+  t_LibXmount_Output_GetApiVersion pfun_output_GetApiVersion;
+  t_LibXmount_Output_GetSupportedFormats pfun_output_GetSupportedFormats;
+  t_LibXmount_Output_GetFunctions pfun_output_GetFunctions;
   void *p_libxmount=NULL;
-  pts_XmountOutputLib p_input_lib=NULL;
+  pts_XmountOutputLib p_output_lib=NULL;
   char *p_buf=NULL;
   char *p_library_path=NULL;
   char *p_supported_formats=NULL;
@@ -226,7 +222,7 @@ te_XmountOutputError XmountOutput_AddLibrary(pts_XmountOutputHandle p_h,
   }
   XMOUNT_STRAPP(p_library_path,p_lib_name);
 
-#define XMOUNTINPUT_LOADLIBS__LOAD_SYMBOL(name,pfun) {           \
+#define XMOUNTOUTPUT_LOADLIBS__LOAD_SYMBOL(name,pfun) {          \
   if((pfun=dlsym(p_libxmount,name))==NULL) {                     \
     LOG_ERROR("Unable to load symbol '%s' from library '%s'!\n", \
               name,                                              \
@@ -239,75 +235,74 @@ te_XmountOutputError XmountOutput_AddLibrary(pts_XmountOutputHandle p_h,
   // Try to load given library
   p_libxmount=dlopen(p_library_path,RTLD_NOW);
   if(p_libxmount==NULL) {
-    LOG_ERROR("Unable to load input library '%s': %s!\n",
+    LOG_ERROR("Unable to load output library '%s': %s!\n",
               p_library_path,
               dlerror());
     return e_XmountOutputError_FailedLoadingLibrary;
   }
 
   // Load library symbols
-  XMOUNTINPUT_LOADLIBS__LOAD_SYMBOL("LibXmount_Output_GetApiVersion",
-                                    pfun_input_GetApiVersion);
+  XMOUNTOUTPUT_LOADLIBS__LOAD_SYMBOL("LibXmount_Output_GetApiVersion",
+                                     pfun_output_GetApiVersion);
 
   // Check library's API version
-  if(pfun_input_GetApiVersion()!=LIBXMOUNT_INPUT_API_VERSION) {
+  if(pfun_output_GetApiVersion()!=LIBXMOUNT_OUTPUT_API_VERSION) {
     LOG_DEBUG("Failed! Wrong API version.\n");
-    LOG_ERROR("Unable to load input library '%s'. Wrong API version\n",
+    LOG_ERROR("Unable to load output library '%s'. Wrong API version\n",
               p_library_path);
     dlclose(p_libxmount);
     return e_XmountOutputError_WrongLibraryApiVersion;
   }
 
-  XMOUNTINPUT_LOADLIBS__LOAD_SYMBOL("LibXmount_Output_GetSupportedFormats",
-                                    pfun_input_GetSupportedFormats);
-  XMOUNTINPUT_LOADLIBS__LOAD_SYMBOL("LibXmount_Output_GetFunctions",
-                                    pfun_input_GetFunctions);
+  XMOUNTOUTPUT_LOADLIBS__LOAD_SYMBOL("LibXmount_Output_GetSupportedFormats",
+                                     pfun_output_GetSupportedFormats);
+  XMOUNTOUTPUT_LOADLIBS__LOAD_SYMBOL("LibXmount_Output_GetFunctions",
+                                     pfun_output_GetFunctions);
 
   // Construct new entry for our library list
-  XMOUNT_MALLOC(p_input_lib,pts_XmountOutputLib,sizeof(ts_XmountOutputLib));
+  XMOUNT_MALLOC(p_output_lib,pts_XmountOutputLib,sizeof(ts_XmountOutputLib));
   // Initialize lib_functions structure to NULL
-  memset(&(p_input_lib->lib_functions),
+  memset(&(p_output_lib->lib_functions),
          0,
-         sizeof(ts_LibXmountOutputFunctions));
+         sizeof(ts_LibXmountOutput_Functions));
 
   // Set name and handle
-  XMOUNT_STRSET(p_input_lib->p_name,p_lib_name);
-  p_input_lib->p_lib=p_libxmount;
+  XMOUNT_STRSET(p_output_lib->p_name,p_lib_name);
+  p_output_lib->p_lib=p_libxmount;
 
   // Get and set supported formats
-  p_supported_formats=pfun_input_GetSupportedFormats();
+  p_supported_formats=pfun_output_GetSupportedFormats();
   p_buf=p_supported_formats;
   while(*p_buf!='\0') {
     supported_formats_len+=(strlen(p_buf)+1);
     p_buf+=(strlen(p_buf)+1);
   }
   supported_formats_len++;
-  XMOUNT_MALLOC(p_input_lib->p_supported_input_types,
+  XMOUNT_MALLOC(p_output_lib->p_supported_output_formats,
                 char*,
                 supported_formats_len);
-  memcpy(p_input_lib->p_supported_input_types,
+  memcpy(p_output_lib->p_supported_output_formats,
          p_supported_formats,
          supported_formats_len);
 
   // Get, set and check lib_functions
-  pfun_input_GetFunctions(&(p_input_lib->lib_functions));
-  if(p_input_lib->lib_functions.CreateHandle==NULL ||
-     p_input_lib->lib_functions.DestroyHandle==NULL ||
-     p_input_lib->lib_functions.Open==NULL ||
-     p_input_lib->lib_functions.Close==NULL ||
-     p_input_lib->lib_functions.Size==NULL ||
-     p_input_lib->lib_functions.Read==NULL ||
-     p_input_lib->lib_functions.OptionsHelp==NULL ||
-     p_input_lib->lib_functions.OptionsParse==NULL ||
-     p_input_lib->lib_functions.GetInfofileContent==NULL ||
-     p_input_lib->lib_functions.GetErrorMessage==NULL ||
-     p_input_lib->lib_functions.FreeBuffer==NULL)
+  pfun_output_GetFunctions(&(p_output_lib->lib_functions));
+  if(p_output_lib->lib_functions.CreateHandle==NULL ||
+     p_output_lib->lib_functions.DestroyHandle==NULL ||
+     p_output_lib->lib_functions.Transform==NULL ||
+     p_output_lib->lib_functions.Size==NULL ||
+     p_output_lib->lib_functions.Read==NULL ||
+     p_output_lib->lib_functions.OptionsHelp==NULL ||
+     p_output_lib->lib_functions.OptionsParse==NULL ||
+     p_output_lib->lib_functions.GetInfofileContent==NULL ||
+     p_output_lib->lib_functions.GetErrorMessage==NULL ||
+     p_output_lib->lib_functions.FreeBuffer==NULL)
   {
     LOG_DEBUG("Missing implemention of one or more functions in lib %s!\n",
               p_lib_name);
-    XMOUNT_FREE(p_input_lib->p_supported_input_types);
-    XMOUNT_FREE(p_input_lib->p_name);
-    XMOUNT_FREE(p_input_lib);
+    XMOUNT_FREE(p_output_lib->p_supported_output_formats);
+    XMOUNT_FREE(p_output_lib->p_name);
+    XMOUNT_FREE(p_output_lib);
     dlclose(p_libxmount);
     return e_XmountOutputError_MissingLibraryFunction;
   }
@@ -316,12 +311,12 @@ te_XmountOutputError XmountOutput_AddLibrary(pts_XmountOutputHandle p_h,
   XMOUNT_REALLOC(p_h->pp_libs,
                  pts_XmountOutputLib*,
                  sizeof(pts_XmountOutputLib)*(p_h->libs_count+1));
-  p_h->pp_libs[p_h->libs_count++]=p_input_lib;
+  p_h->pp_libs[p_h->libs_count++]=p_output_lib;
 
   LOG_DEBUG("Output library '%s' loaded successfully\n",p_lib_name);
 
-#undef XMOUNTINPUT_LOADLIBS__LOAD_SYMBOL
-*/
+#undef XMOUNTOUTPUT_LOADLIBS__LOAD_SYMBOL
+
   return e_XmountOutputError_None;
 }
 
@@ -434,12 +429,7 @@ te_XmountOutputError XmountOutput_GetOptionsHelpText(pts_XmountOutputHandle p_h,
     XMOUNT_STRAPP(p_help,"\n");
     XMOUNT_STRAPP(p_help,p_buf);
     XMOUNT_STRAPP(p_help,"\n");
-    ret=p_h->pp_libs[i]->lib_functions.FreeBuffer(p_buf);
-    if(ret!=0) {
-      LOG_ERROR("Unable to free options help text from library '%s': %s!\n",
-                p_h->pp_libs[i]->p_name,
-                p_h->pp_libs[i]->lib_functions.GetErrorMessage(ret));
-    }
+    p_h->pp_libs[i]->lib_functions.FreeBuffer(p_buf);
   }
 
   *pp_help_text=p_help;
@@ -469,7 +459,7 @@ te_XmountOutputError XmountOutput_GetLibsInfoText(pts_XmountOutputHandle p_h,
     XMOUNT_STRAPP(p_info_text," supporting ");
     XMOUNT_STRAPP(p_info_text,"    - ");
     XMOUNT_STRAPP(p_info_text,"    - ");
-    p_buf=p_h->pp_libs[i]->p_supported_output_types;
+    p_buf=p_h->pp_libs[i]->p_supported_output_formats;
     first=1;
     while(*p_buf!='\0') {
       if(first==1) {
@@ -492,28 +482,86 @@ te_XmountOutputError XmountOutput_GetLibsInfoText(pts_XmountOutputHandle p_h,
 }
 
 /*
- * XmountOutput_SetType
+ * XmountOutput_SetFormat
  */
-te_XmountOutputError XmountOutput_SetType(pts_XmountOutputHandle p_h,
-                                          char *p_format)
+te_XmountOutputError XmountOutput_SetFormat(pts_XmountOutputHandle p_h,
+                                            char *p_format)
 {
-  // TODO: Implement
+  // Params check
+  if(p_h==NULL) return e_XmountOutputError_InvalidHandle;
+  if(p_format==NULL) return e_XmountMorphError_InvalidString;
+
+  // Set output format
+  XMOUNT_STRSET(p_h->p_output_format,p_format);
+
   return e_XmountOutputError_None;
 }
 
 /*
- * XmountOutput_Open
+ * XmountOutput_Transform
  */
-te_XmountOutputError XmountOutput_Open(pts_XmountOutputHandle p_h) {
-  // TODO: Implement
-  return e_XmountOutputError_None;
-}
+te_XmountOutputError XmountOutput_Transform(pts_XmountOutputHandle p_h) {
+  const char *p_err_msg=NULL;
+  int ret=0;
+  te_XmountOutputError output_ret=e_XmountOutputError_None;
 
+  // Params check
+  if(p_h==NULL) return e_XmountOutputError_InvalidHandle;
+
+  // Set default output format if none was set previously
+  if(p_h->p_output_format==NULL) {
+    XMOUNT_STRSET(p_h->p_output_format,XMOUNT_OUTPUT_DEFAULT_OUTPUT_FORMAT);
+  }
+
+  // Find output lib
+  output_ret=XmountOutput_FindOutputLib(p_h);
+  if(output_ret!=e_XmountOutputError_None) {
+    LOG_ERROR("Unable to find a library supporting the output format '%s'!\n",
+              p_h->p_output_format);
+    return output_ret;
+  }
+
+  // Init output
+  ret=p_h->p_functions->CreateHandle(&p_h->p_handle,
+                                     p_h->p_output_format,
+                                     p_h->debug);
+  if(ret!=0) {
+    LOG_ERROR("Unable to create output handle: %s!\n",
+              p_h->p_functions->GetErrorMessage(ret));
+    return e_XmountOutputError_FailedCreatingOutputHandle;
+  }
+
+  // Parse output lib specific options
+  if(p_h->pp_lib_params!=NULL) {
+    p_err_msg=NULL;
+    ret=p_h->p_functions->OptionsParse(p_h->p_handle,
+                                       p_h->lib_params_count,
+                                       p_h->pp_lib_params,
+                                       &p_err_msg);
+    if(ret!=0) {
+      if(p_err_msg!=NULL) {
+        LOG_ERROR("Unable to parse output library specific options: %s: %s!\n",
+                  p_h->p_functions->GetErrorMessage(ret),
+                  p_err_msg);
+        p_h->p_functions->FreeBuffer(p_err_msg);
+      } else {
+        LOG_ERROR("Unable to parse output library specific options: %s!\n",
+                  p_h->p_functions->GetErrorMessage(ret));
+      }
+      return e_XmountOutputError_FailedParsingLibParams;
+    }
+  }
+
+  // TODO: This has to be done somewhere!
 /*
- * XmountOutput_Close
- */
-te_XmountOutputError XmountOutput_Close(pts_XmountOutputHandle p_h) {
-  // TODO: Implement
+  if(!ExtractOutputFileNames(glob_xmount.p_first_input_image_name)) {
+    LOG_ERROR("Couldn't extract virtual file names!\n");
+    FreeResources();
+    return 1;
+  }
+  LOG_DEBUG("Virtual file names extracted successfully\n")
+*/
+
   return e_XmountOutputError_None;
 }
 
@@ -620,7 +668,8 @@ te_XmountOutputError XmountOutput_WriteData(pts_XmountOutputHandle p_h,
                                             const char *p_output_filename,
                                             const char *p_buf,
                                             uint64_t offset,
-                                            uint64_t count)
+                                            uint64_t count,
+                                            uint64_t *p_written)
 {
   // TODO: Implement
   return e_XmountOutputError_None;
@@ -646,10 +695,29 @@ te_XmountOutputError XmountOutput_GetInfoFileContent(pts_XmountOutputHandle p_h,
 /*
  * FindOutputLib
  */
-te_XmountOutputError XmountOutput_FindLib(pts_XmountOutputHandle p_h,
-                                         pts_XmountOutputImage p_input_image)
-{
-  // TODO: Implement
+te_XmountOutputError XmountOutput_FindLib(pts_XmountOutputHandle p_h) {
+  char *p_buf;
+
+  LOG_DEBUG("Trying to find suitable library for output format '%s'.\n",
+            p_h->p_output_format);
+
+  // Loop over all loaded output libs
+  for(uint32_t i=0;i<p_h->libs_count;i++) {
+    LOG_DEBUG("Checking output library %s\n",p_h->pp_libs[i]->p_name);
+    p_buf=p_h->pp_libs[i]->p_supported_output_formats;
+    while(*p_buf!='\0') {
+      if(strcmp(p_buf,p_h->p_output_format)==0) {
+        // Library supports output type, set lib functions
+        LOG_DEBUG("Output library '%s' pretends to handle that output format.\n",
+                  p_h->pp_libs[i]->p_name);
+        p_h->p_functions=&(p_h->pp_libs[i]->lib_functions);
+        return e_XmountOutputError_None;
+      }
+      p_buf+=(strlen(p_buf)+1);
+    }
+  }
+
+  LOG_DEBUG("Couldn't find any suitable library.\n");
 
   // No library supporting input type found
   return e_XmountOutputError_UnsupportedFormat;

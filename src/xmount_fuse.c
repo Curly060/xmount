@@ -64,7 +64,14 @@ int Xmount_FuseAccess(const char *path, int perm) {
  * \return 0 on success, negated error code on error
  */
 int Xmount_FuseGetAttr(const char *p_path, struct stat *p_stat) {
+  te_XmountError xmount_ret=e_XmountError_None;
+
   memset(p_stat,0,sizeof(struct stat));
+  if((xmount_ret=Xmount_GetFileAttr(p_path,p_stat))!=e_XmountError_None) {
+    LOG_ERROR("Couldn't get file attributes: Error code %u!\n",xmount_ret);
+    return -ENOENT;
+  }
+/*
   if(strcmp(p_path,"/")==0) {
     // Attributes of mountpoint
     p_stat->st_mode=S_IFDIR | 0777;
@@ -94,6 +101,7 @@ int Xmount_FuseGetAttr(const char *p_path, struct stat *p_stat) {
   // Set uid and gid of all files to uid and gid of current process
   p_stat->st_uid=getuid();
   p_stat->st_gid=getgid();
+*/
   return 0;
 }
 
@@ -138,18 +146,33 @@ int Xmount_FuseReadDir(const char *p_path,
                        off_t offset,
                        struct fuse_file_info *p_fi)
 {
+  uint64_t dir_entries=0;
+  char **pp_dir_entries=NULL;
+  te_XmountError xmount_ret=e_XmountError_None;
+
   // Ignore some params
   (void)offset;
   (void)p_fi;
 
-  if(strcmp(p_path,"/")==0) {
-    // Add std . and .. entrys
-    filler(p_buf,".",NULL,0);
-    filler(p_buf,"..",NULL,0);
-    // Add our virtual files (p+1 to ignore starting "/")
-    filler(p_buf,glob_xmount.output.p_virtual_image_path+1,NULL,0);
-    filler(p_buf,glob_xmount.output.p_info_path+1,NULL,0);
-  } else return -ENOENT;
+  // Get directory listing
+  xmount_ret=Xmount_GetDirListing(p_path,
+                                  &dir_entries,
+                                  &pp_dir_entries);
+  if(xmount_ret!=e_XmountError_None) {
+    LOG_ERROR("Couldn't get directory listing: Error code %u!\n",xmount_ret);
+    return -ENOENT;
+  }
+
+  // Add std . and .. entrys
+  filler(p_buf,".",NULL,0);
+  filler(p_buf,"..",NULL,0);
+
+  // Add retrieved entries
+  for(uint64_t i=0;i<dir_entries;i++) {
+    filler(p_buf,pp_dir_entries[i],NULL,0);
+    XMOUNT_FREE(pp_dir_entries[i]);
+  }
+  XMOUNT_FREE(pp_dir_entries);
 
   return 0;
 }

@@ -45,6 +45,13 @@
 /*******************************************************************************
  * Xmount specific structures
  ******************************************************************************/
+//! Return codes
+typedef enum e_XmountError {
+  //! No error
+  e_XmountError_None=0,
+
+} te_XmountError;
+
 //! Structure containing xmount arguments
 typedef struct s_XmountArgs {
   //! Cache file

@@ -18,11 +18,16 @@
 #ifndef XMOUNT_MORPHING_H
 #define XMOUNT_MORPHING_H
 
+#include <stdlib.h> // For calloc and size_t, off_t types
+#include <inttypes.h> // For uint* types
+
 /*******************************************************************************
  * Public definitions / macros
  ******************************************************************************/
 //! Naming scheme of morphing libraries
 #define XMOUNT_MORPHING_LIBRARY_NAMING_SCHEME "libxmount_morph_"
+//! Default morph type
+#define XMOUNT_MORPHING_DEFAULT_MORPH_TYPE "combine"
 
 /*******************************************************************************
  * Public types / structures / enums

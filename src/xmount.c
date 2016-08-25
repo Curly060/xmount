@@ -50,15 +50,25 @@
 #define XMOUNT_COPYRIGHT_NOTICE \
   "xmount v%s Copyright (c) 2008-2016 by Gillen Daniel <gillen.dan@pinguin.lu>"
 
-#define LOG_WARNING(...) {            \
+#define IMAGE_INFO_INPUT_HEADER \
+  "------> The following values are supplied by the used input library(ies) " \
+    "<------\n"
+
+#define IMAGE_INFO_MORPHING_HEADER \
+  "\n------> The following values are supplied by the used morphing library " \
+    "<------\n\n"
+
+#define LOG_WARNING(...) do {         \
   LIBXMOUNT_LOG_WARNING(__VA_ARGS__); \
-}
-#define LOG_ERROR(...) {            \
+} while(0)
+
+#define LOG_ERROR(...) do {         \
   LIBXMOUNT_LOG_ERROR(__VA_ARGS__); \
-}
-#define LOG_DEBUG(...) {                              \
+} while(0)
+
+#define LOG_DEBUG(...) do {                           \
   LIBXMOUNT_LOG_DEBUG(glob_xmount.debug,__VA_ARGS__); \
-}
+} while(0)
 
 #define HASH_AMOUNT (1024*1024)*10 // Amount of data used to construct a
                                    // "unique" hash for every input image
@@ -399,7 +409,7 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
             FuseMinusOControl=FALSE;
           } else FuseAllowOther=FALSE;
         } else {
-          LOG_ERROR("Couldn't parse fuse mount options!\n")
+          LOG_ERROR("Couldn't parse fuse mount options!\n");
           return FALSE;
         }
       } else if(strcmp(pp_argv[i],"-s")==0) {
@@ -432,11 +442,11 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
           XMOUNT_STRSET(glob_xmount.args.p_cache_file,pp_argv[i])
           glob_xmount.args.writable=TRUE;
         } else {
-          LOG_ERROR("You must specify a cache file!\n")
+          LOG_ERROR("You must specify a cache file!\n");
           return FALSE;
         }
         LOG_DEBUG("Enabling virtual write support using cache file \"%s\"\n",
-                  glob_xmount.args.p_cache_file)
+                  glob_xmount.args.p_cache_file);
       } else if(strcmp(pp_argv[i],"--in")==0) {
         // Input image format and source files
         if((i+2)<argc) {
@@ -538,7 +548,7 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
             return FALSE;
           }
         } else {
-          LOG_ERROR("You must specify an offset!\n")
+          LOG_ERROR("You must specify an offset!\n");
           return FALSE;
         }
       } else if(strcmp(pp_argv[i],"--out")==0) {
@@ -581,11 +591,11 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
           glob_xmount.args.writable=TRUE;
           glob_xmount.args.overwrite_cache=TRUE;
         } else {
-          LOG_ERROR("You must specify a cache file!\n")
+          LOG_ERROR("You must specify a cache file!\n");
           return FALSE;
         }
         LOG_DEBUG("Enabling virtual write support overwriting cache file %s\n",
-                  glob_xmount.args.p_cache_file)
+                  glob_xmount.args.p_cache_file);
       } else if(strcmp(pp_argv[i],"--sizelimit")==0) {
         // Set input image size limit
         if((i+1)<argc) {
@@ -602,7 +612,7 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
             return FALSE;
           }
         } else {
-          LOG_ERROR("You must specify a size limit!\n")
+          LOG_ERROR("You must specify a size limit!\n");
           return FALSE;
         }
       } else if(strcmp(pp_argv[i],"--version")==0 ||
@@ -662,7 +672,7 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
                   glob_xmount.p_mountpoint);
     glob_xmount.fuse_argc++;
   } else {
-    LOG_ERROR("No mountpoint specified!\n")
+    LOG_ERROR("No mountpoint specified!\n");
     return FALSE;
   }
 
@@ -776,7 +786,7 @@ static int CalculateInputImageHash(uint64_t *p_hash_low,
   XMOUNT_MALLOC(p_buf,char*,HASH_AMOUNT*sizeof(char));
   ret=ReadMorphedImageData(p_buf,0,HASH_AMOUNT,&read_data);
   if(ret!=TRUE || read_data==0) {
-    LOG_ERROR("Couldn't read data from morphed image file!\n")
+    LOG_ERROR("Couldn't read data from morphed image file!\n");
     free(p_buf);
     return FALSE;
   }
@@ -1480,6 +1490,30 @@ int main(int argc, char *argv[]) {
 
   // Set implemented FUSE functions
   struct fuse_operations xmount_operations = {
+    // File functions
+    .create=XmountFuse_create,
+    .ftruncate=XmountFuse_ftruncate,
+    .open=XmountFuse_open,
+    .read=XmountFuse_read,
+    .release=XmountFuse_release,
+    .write=XmountFuse_write,
+    // Dir functions
+    .mkdir=XmountFuse_mkdir,
+    .readdir=XmountFuse_readdir,
+    // Misc functions
+    .chmod=XmountFuse_chmod,
+    .chown=XmountFuse_chown,
+    .getattr=XmountFuse_getattr,
+    .link=XmountFuse_link,
+    .readlink=XmountFuse_readlink,
+    .rename=XmountFuse_rename,
+    .rmdir=XmountFuse_rmdir,
+    //.statfs=XmountFuse_statfs,
+    .symlink=XmountFuse_symlink,
+    .truncate=XmountFuse_truncate,
+    .utimens=XmountFuse_utimens,
+    .unlink=XmountFuse_unlink
+/*
     //.access=FuseAccess,
     .getattr=Xmount_FuseGetAttr,
     .mkdir=Xmount_FuseMkDir,
@@ -1492,6 +1526,7 @@ int main(int argc, char *argv[]) {
     //.statfs=FuseStatFs,
     .unlink=Xmount_FuseUnlink,
     .write=Xmount_FuseWrite
+*/
   };
 
   // Disable std output / input buffering
@@ -1506,7 +1541,7 @@ int main(int argc, char *argv[]) {
 
   // Load input, morphing and output libs
   if(!LoadLibs()) {
-    LOG_ERROR("Unable to load any libraries!\n")
+    LOG_ERROR("Unable to load any libraries!\n");
     return 1;
   }
 
@@ -1527,13 +1562,13 @@ int main(int argc, char *argv[]) {
     return 1;
   }
   if(input_image_count==0) {
-    LOG_ERROR("No --in command line option specified!\n")
+    LOG_ERROR("No --in command line option specified!\n");
     PrintUsage(argv[0]);
     FreeResources();
     return 1;
   }
   if(glob_xmount.fuse_argc<2) {
-    LOG_ERROR("Couldn't parse command line options!\n")
+    LOG_ERROR("Couldn't parse command line options!\n");
     PrintUsage(argv[0]);
     FreeResources();
     return 1;
@@ -1556,7 +1591,7 @@ int main(int argc, char *argv[]) {
   }
 
   if(glob_xmount.debug==TRUE) {
-    LOG_DEBUG("Options passed to FUSE: ")
+    LOG_DEBUG("Options passed to FUSE: ");
     for(int i=0;i<glob_xmount.fuse_argc;i++) {
       printf("%s ",glob_xmount.pp_fuse_argv[i]);
     }
@@ -1600,12 +1635,12 @@ int main(int argc, char *argv[]) {
 
     te_XmountCache_Error cache_ret=e_XmountCache_Error_None;
     if(!InitCacheFile()) {
-      LOG_ERROR("Couldn't initialize cache file!\n")
+      LOG_ERROR("Couldn't initialize cache file!\n");
       FreeResources();
       return 1;
     }
 */
-    LOG_DEBUG("Cache file initialized successfully\n")
+    LOG_DEBUG("Cache file initialized successfully\n");
   }
 
   // Init random generator
@@ -1615,12 +1650,12 @@ int main(int argc, char *argv[]) {
   if(CalculateInputImageHash(&(glob_xmount.image_hash_lo),
                              &(glob_xmount.image_hash_hi))==FALSE)
   {
-    LOG_ERROR("Couldn't calculate partial hash of morphed image!\n")
+    LOG_ERROR("Couldn't calculate partial hash of morphed image!\n");
     return 1;
   }
 
   if(glob_xmount.debug==TRUE) {
-    LOG_DEBUG("Partial MD5 hash of morphed image: ")
+    LOG_DEBUG("Partial MD5 hash of morphed image: ");
     for(int i=0;i<8;i++)
       printf("%02hhx",*(((char*)(&(glob_xmount.image_hash_lo)))+i));
     for(int i=0;i<8;i++)
@@ -1638,11 +1673,11 @@ int main(int argc, char *argv[]) {
 
   // Gather infos for info file
   if(!InitInfoFile()) {
-    LOG_ERROR("Couldn't gather infos for virtual image info file!\n")
+    LOG_ERROR("Couldn't gather infos for virtual image info file!\n");
     FreeResources();
     return 1;
   }
-  LOG_DEBUG("Virtual image info file build successfully\n")
+  LOG_DEBUG("Virtual image info file build successfully\n");
 
   // Call fuse_main to do the fuse magic
   fuse_ret=fuse_main(glob_xmount.fuse_argc,

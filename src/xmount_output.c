@@ -15,28 +15,29 @@
 * this program. If not, see <http://www.gnu.org/licenses/>.                    *
 *******************************************************************************/
 
-#include <stdlib.h> // For calloc
+#include "xmount_output.h"
+#include "../libxmount/libxmount.h"
+#include "../libxmount_output/libxmount_output.h"
+#include "macros.h"
+
 #include <string.h> // For memcpy
 #include <dlfcn.h> // For dlopen, dlclose, dlsym
-
-#include "../libxmount_output/libxmount_output.h"
-#include "xmount_output.h"
-#include "xmount.h"
-#include "macros.h"
 
 /*******************************************************************************
  * Private definitions / macros
  ******************************************************************************/
 
-#define LOG_WARNING(...) {            \
+#define LOG_WARNING(...) do {         \
   LIBXMOUNT_LOG_WARNING(__VA_ARGS__); \
-}
-#define LOG_ERROR(...) {            \
+} while(0)
+
+#define LOG_ERROR(...) do {         \
   LIBXMOUNT_LOG_ERROR(__VA_ARGS__); \
-}
-#define LOG_DEBUG(...) {                              \
-  LIBXMOUNT_LOG_DEBUG(glob_xmount.debug,__VA_ARGS__); \
-}
+} while(0)
+
+#define LOG_DEBUG(...) do {                    \
+  LIBXMOUNT_LOG_DEBUG(p_h->debug,__VA_ARGS__); \
+} while(0)
 
 /*******************************************************************************
  * Private types / structures / enums
@@ -489,7 +490,7 @@ te_XmountOutputError XmountOutput_SetFormat(pts_XmountOutputHandle p_h,
 {
   // Params check
   if(p_h==NULL) return e_XmountOutputError_InvalidHandle;
-  if(p_format==NULL) return e_XmountMorphError_InvalidString;
+  if(p_format==NULL) return e_XmountOutputError_InvalidString;
 
   // Set output format
   XMOUNT_STRSET(p_h->p_output_format,p_format);
@@ -514,7 +515,7 @@ te_XmountOutputError XmountOutput_Transform(pts_XmountOutputHandle p_h) {
   }
 
   // Find output lib
-  output_ret=XmountOutput_FindOutputLib(p_h);
+  output_ret=XmountOutput_FindLib(p_h);
   if(output_ret!=e_XmountOutputError_None) {
     LOG_ERROR("Unable to find a library supporting the output format '%s'!\n",
               p_h->p_output_format);
@@ -570,7 +571,12 @@ te_XmountOutputError XmountOutput_Transform(pts_XmountOutputHandle p_h) {
  */
 te_XmountOutputError
   XmountOutput_GetOutputFilenames(pts_XmountOutputHandle p_h,
-                                  char ***ppp_output_files);
+                                  char ***ppp_output_files)
+{
+  // TODO: Implement
+
+  return e_XmountOutputError_None;
+}
 
 /*
  * XmountOutput_GetSize

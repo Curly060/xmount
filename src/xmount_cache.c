@@ -20,23 +20,26 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <errno.h>
 
 #include "xmount_cache.h"
-#include "xmount.h"
+#include "../libxmount/libxmount.h"
 #include "macros.h"
 
 /*******************************************************************************
  * Private definitions / macros
  ******************************************************************************/
-#define LOG_WARNING(...) {            \
+#define LOG_WARNING(...) do {         \
   LIBXMOUNT_LOG_WARNING(__VA_ARGS__); \
-}
-#define LOG_ERROR(...) {            \
+} while(0)
+
+#define LOG_ERROR(...) do {         \
   LIBXMOUNT_LOG_ERROR(__VA_ARGS__); \
-}
-#define LOG_DEBUG(...) {                              \
-  LIBXMOUNT_LOG_DEBUG(glob_xmount.debug,__VA_ARGS__); \
-}
+} while(0)
+
+#define LOG_DEBUG(...) do {                           \
+  LIBXMOUNT_LOG_DEBUG(p_h->debug,__VA_ARGS__); \
+} while(0)
 
 #ifndef __LP64__
   //! Value used to indicate an uncached block entry
@@ -69,6 +72,8 @@ typedef struct s_XmountCacheHandle {
   // TODO: Move to s_XmountData
   //! Overwrite existing cache
   uint8_t overwrite_cache;
+  //! Debug
+  uint8_t debug;
 } ts_XmountCacheHandle, *pts_XmountCacheHandle;
 
 /*******************************************************************************
@@ -164,7 +169,7 @@ te_XmountCache_Error XmountCache_Create(pts_XmountCacheHandle *pp_h,
               p_h->p_cache_file,
               gidafs_ret);
     XMOUNTCACHE_CREATE__DESTROY_HANDLE;
-    return FALSE;
+    return e_XmountCache_Error_FailedCacheInit;
   }
 
 #define XMOUNTCACHE_CREATE__CLOSE_CACHE do {             \
@@ -339,7 +344,7 @@ te_XmountCache_Error XmountCache_Open(pts_XmountCacheHandle *pp_h,
     // anymore!
     LOG_ERROR("Couldn't open xmount cache file '%s': Error code %u!\n",
               p_h->p_cache_file,
-              gidafs_ret)
+              gidafs_ret);
     return e_XmountCache_Error_FailedOpeningCache;
   }
 
@@ -421,7 +426,7 @@ te_XmountCache_Error XmountCache_Open(pts_XmountCacheHandle *pp_h,
                                    &blockindex_size);
   if(gidafs_ret!=eGidaFsError_None) {
     LOG_ERROR("Unable to get block cache index file size: Error code %u!\n",
-              gidafs_ret)
+              gidafs_ret);
     XMOUNTCACHE_OPEN__CLOSE_BLOCK_CACHE_INDEX;
     XMOUNTCACHE_OPEN__CLOSE_BLOCK_CACHE;
     XMOUNTCACHE_OPEN__CLOSE_CACHE;
@@ -432,7 +437,7 @@ te_XmountCache_Error XmountCache_Open(pts_XmountCacheHandle *pp_h,
      (blockindex_size/sizeof(uint64_t))!=p_h->block_cache_index_len)
   {
     // TODO: Be more helpfull in error message
-    LOG_ERROR("Block cache index size is incorrect for given input image!\n")
+    LOG_ERROR("Block cache index size is incorrect for given input image!\n");
     XMOUNTCACHE_OPEN__CLOSE_BLOCK_CACHE_INDEX;
     XMOUNTCACHE_OPEN__CLOSE_BLOCK_CACHE;
     XMOUNTCACHE_OPEN__CLOSE_CACHE;
@@ -537,6 +542,17 @@ te_XmountCache_Error XmountCache_Close(pts_XmountCacheHandle *pp_h) {
 
   *pp_h=NULL;
   return final_ret;
+}
+
+/*
+ * XmountCache_GetGidaFsHandle
+ */
+hGidaFs XmountCache_GetGidaFsHandle(pts_XmountCacheHandle p_h) {
+  // Params check
+  if(p_h==NULL) return NULL;
+
+  // Return handle
+  return p_h->h_cache_file;
 }
 
 /*
@@ -790,9 +806,48 @@ te_XmountCache_Error XmountCache_UpdateIndex(pts_XmountCacheHandle p_h,
                                  &written);
   if(gidafs_ret!=eGidaFsError_None || written!=update_size) {
     LOG_ERROR("Unable to update block cache index: Error code %u!\n",
-              gidafs_ret)
+              gidafs_ret);
     return e_XmountCache_Error_FailedUpdatingIndex;
   }
 
   return e_XmountCache_Error_None;
+}
+
+/*
+ * XmountCache_GidaFsError2Errno
+ */
+int XmountCache_GidaFsError2Errno(teGidaFsError error_code) {
+  switch(error_code) {
+    case eGidaFsError_ExistingEntry:
+      return -EEXIST;
+    case eGidaFsError_UnableToOpenDirectoryAsFile:
+      return -EISDIR;
+    case eGidaFsError_InexistingFile:
+    case eGidaFsError_InexistingPathElement:
+    case eGidaFsError_InexistingDirEntry:
+      return -ENOENT;
+    case eGidaFsError_NonDirInPath:
+      return -ENOTDIR;
+    case eGidaFsError_EndOfNodeData:
+    case eGidaFsError_NoMoreEntries:
+      return 0;
+    case eGidaFsError_InvalidDirEntryHandle:
+    case eGidaFsError_InvalidDirEntryHandlePointer:
+    case eGidaFsError_InvalidDirHandle:
+    case eGidaFsError_InvalidDirHandlePointer:
+    case eGidaFsError_InvalidFileHandle:
+    case eGidaFsError_InvalidFileHandlePointer:
+      return -EBADF;
+    case eGidaFsError_UnableToOpenNonDirectoryAsDirectory:
+      return -ENOTDIR;
+    case eGidaFsError_InvalidObjectName:
+    case eGidaFsError_InvalidObjectPath:
+      return -ENAMETOOLONG;
+    case eGidaFsError_FailedWritingRawData:
+      return -ENOSPC;
+    case eGidaFsError_UnableToReadNonSymlinkAsSymlink:
+      return -EINVAL;
+    default:
+      return -EIO;
+  }
 }

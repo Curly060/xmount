@@ -35,13 +35,8 @@
 /*
  * Constants
  */
-#define IMAGE_INFO_INPUT_HEADER \
-  "------> The following values are supplied by the used input library(ies) " \
-    "<------\n"
-#define IMAGE_INFO_MORPHING_HEADER \
-  "\n------> The following values are supplied by the used morphing library " \
-    "<------\n\n"
 
+#define XMOUNT_
 /*******************************************************************************
  * Xmount specific structures
  ******************************************************************************/
@@ -109,5 +104,9 @@ ts_XmountData glob_xmount;
 /*******************************************************************************
  * Xmount functions
  ******************************************************************************/
+te_XmountError Xmount_GetFileAttr(const char *p_path, struct stat *p_stat);
+te_XmountError Xmount_GetDirListing(const char *p_path,
+                                    uint64_t *p_dir_entries,
+                                    char ***ppp_dir_entries);
 
 #endif // XMOUNT_H

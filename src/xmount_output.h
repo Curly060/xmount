@@ -18,6 +18,9 @@
 #ifndef XMOUNT_OUTPUT_H
 #define XMOUNT_OUTPUT_H
 
+#include <inttypes.h> // For uint* types
+#include <stdlib.h> // For calloc and off_t, size_t types
+
 /*******************************************************************************
  * Public definitions / macros
  ******************************************************************************/

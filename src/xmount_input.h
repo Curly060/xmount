@@ -18,7 +18,7 @@
 #ifndef XMOUNT_INPUT_H
 #define XMOUNT_INPUT_H
 
-#include <stdint.h>
+#include <stdint.h> // For uint* types
 
 /*******************************************************************************
  * Public definitions / macros

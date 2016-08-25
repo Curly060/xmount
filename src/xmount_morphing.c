@@ -15,30 +15,29 @@
 * this program. If not, see <http://www.gnu.org/licenses/>.                    *
 *******************************************************************************/
 
-#include <stdlib.h> // For calloc
+#include "xmount_morphing.h"
+#include "../libxmount/libxmount.h"
+#include "../libxmount_morphing/libxmount_morphing.h"
+#include "macros.h"
+
 #include <string.h> // For memcpy
 #include <dlfcn.h> // For dlopen, dlclose, dlsym
-
-#include "../libxmount_morphing/libxmount_morphing.h"
-#include "xmount_morphing.h"
-#include "xmount.h"
-#include "macros.h"
 
 /*******************************************************************************
  * Private definitions / macros
  ******************************************************************************/
 
-#define XMOUNT_MORPHING_DEFAULT_MORPH_TYPE "combine"
-
-#define LOG_WARNING(...) {            \
+#define LOG_WARNING(...) do {         \
   LIBXMOUNT_LOG_WARNING(__VA_ARGS__); \
-}
-#define LOG_ERROR(...) {            \
+} while(0)
+
+#define LOG_ERROR(...) do {         \
   LIBXMOUNT_LOG_ERROR(__VA_ARGS__); \
-}
-#define LOG_DEBUG(...) {                              \
-  LIBXMOUNT_LOG_DEBUG(glob_xmount.debug,__VA_ARGS__); \
-}
+} while(0)
+
+#define LOG_DEBUG(...) do {                    \
+  LIBXMOUNT_LOG_DEBUG(p_h->debug,__VA_ARGS__); \
+} while(0)
 
 /*******************************************************************************
  * Private types / structures / enums
@@ -352,7 +351,7 @@ te_XmountMorphError XmountMorphing_GetSupportedTypes(pts_XmountMorphHandle p_h,
     cur_len=(uint32_t)(p_buf-p_h->pp_libs[i]->p_supported_morphing_types);
     if(cur_len==0) continue;
     p_types=(char*)realloc(p_types,vector_len+cur_len);
-    if(p_types==NULL) return e_XmountInput_Error_Alloc;
+    if(p_types==NULL) return e_XmountMorphError_Alloc;
     memcpy(p_types+vector_len,
            p_h->pp_libs[i]->p_supported_morphing_types,
            cur_len);
@@ -361,7 +360,7 @@ te_XmountMorphError XmountMorphing_GetSupportedTypes(pts_XmountMorphHandle p_h,
 
   // Null-terminate vector
   p_types=(char*)realloc(p_types,vector_len+1);
-  if(p_types==NULL) return e_XmountInput_Error_Alloc;
+  if(p_types==NULL) return e_XmountMorphError_Alloc;
   p_types[vector_len]='\0';
 
   *pp_types=p_types;

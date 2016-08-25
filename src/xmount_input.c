@@ -15,28 +15,30 @@
 * this program. If not, see <http://www.gnu.org/licenses/>.                    *
 *******************************************************************************/
 
+#include "xmount_input.h"
+#include "../libxmount/libxmount.h"
+#include "../libxmount_input/libxmount_input.h"
+#include "macros.h"
+
 #include <stdlib.h> // For calloc
 #include <string.h> // For memcpy
 #include <dlfcn.h> // For dlopen, dlclose, dlsym
-
-#include "xmount_input.h"
-#include "xmount.h"
-#include "macros.h"
-#include "../libxmount_input/libxmount_input.h"
 
 /*******************************************************************************
  * Private definitions / macros
  ******************************************************************************/
 
-#define LOG_WARNING(...) {            \
+#define LOG_WARNING(...) do {         \
   LIBXMOUNT_LOG_WARNING(__VA_ARGS__); \
-}
-#define LOG_ERROR(...) {            \
+} while(0)
+
+#define LOG_ERROR(...) do {         \
   LIBXMOUNT_LOG_ERROR(__VA_ARGS__); \
-}
-#define LOG_DEBUG(...) {                              \
-  LIBXMOUNT_LOG_DEBUG(glob_xmount.debug,__VA_ARGS__); \
-}
+} while(0)
+
+#define LOG_DEBUG(...) do {                    \
+  LIBXMOUNT_LOG_DEBUG(p_h->debug,__VA_ARGS__); \
+} while(0)
 
 /*******************************************************************************
  * Private types / structures / enums
@@ -580,7 +582,7 @@ te_XmountInput_Error XmountInput_Open(pts_XmountInputHandle p_h) {
   if(p_h==NULL) return e_XmountInput_Error_InvalidHandle;
 
   for(uint64_t i=0;i<p_h->images_count;i++) {
-    if(p_h->debug==TRUE) {
+    if(p_h->debug==1) {
       if(p_h->pp_images[i]->files_count==1) {
         LOG_DEBUG("Loading image file \"%s\"...\n",
                   p_h->pp_images[i]->pp_files[0]);
@@ -693,7 +695,7 @@ te_XmountInput_Error XmountInput_Open(pts_XmountInputHandle p_h) {
       p_h->pp_images[i]->size=p_h->image_size_limit;
     }
 
-    LOG_DEBUG("Input image loaded successfully\n")
+    LOG_DEBUG("Input image loaded successfully\n");
   }
 
   return e_XmountInput_Error_None;

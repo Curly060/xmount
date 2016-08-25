@@ -105,7 +105,7 @@ te_XmountCache_Error XmountCache_Create(pts_XmountCacheHandle *pp_h,
  *
  * Opens the given xmount cache file.
  *
- * \param pp_handle Pointer to an xmount cache handle
+ * \param pp_h Pointer to an xmount cache handle
  * \param p_file File to use as cache file
  * \param image_size Size of image in bytes for which this cache will be used
  * \return e_XmountCache_Error_None on success
@@ -119,10 +119,21 @@ te_XmountCache_Error XmountCache_Open(pts_XmountCacheHandle *pp_h,
  *
  * Closes the given xmount cache file and frees any used resources.
  *
- * \param pp_handle Pointer to an xmount cache handle
+ * \param pp_h Pointer to an xmount cache handle
  * \return e_XmountCache_Error_None on success
  */
 te_XmountCache_Error XmountCache_Close(pts_XmountCacheHandle *pp_h);
+
+/*!
+ * \brief Get GidaFS handle
+ *
+ * Returns the raw GidaFS handle used by XmountCache. This handle can be
+ * used to manipulate the underlying cache file directly.
+ *
+ * \param p_h Xmount cache handle
+ * \return GidaFS handle on success or NULL on error
+ */
+hGidaFs XmountCache_GetGidaFsHandle(pts_XmountCacheHandle p_h);
 
 /*!
  * \brief Read data from block cache
@@ -134,7 +145,7 @@ te_XmountCache_Error XmountCache_Close(pts_XmountCacheHandle *pp_h);
  * WARNING: This function does only work on single blocks. It is not possible to
  * read beyond a block end.
  *
- * \param p_handle Xmount cache handle
+ * \param p_h Xmount cache handle
  * \param p_buf Buffer to store read data into
  * \param block Number of block to read data from
  * \param block_offset Offset inside block to start reading from
@@ -157,7 +168,7 @@ te_XmountCache_Error XmountCache_BlockCacheRead(pts_XmountCacheHandle p_h,
  * WARNING: This function does only work on single blocks. It is not possible to
  * write beyond a block end.
  *
- * \param p_handle Xmount cache handle
+ * \param p_h Xmount cache handle
  * \param p_buf Buffer with data to write
  * \param block Number of block to write data to
  * \param block_offset Offset inside block to start writing from
@@ -178,7 +189,7 @@ te_XmountCache_Error XmountCache_BlockCacheWrite(pts_XmountCacheHandle p_h,
  * Every block can only be cached once. Appending the same block twice will
  * fail.
  *
- * \param p_handle Xmount cache handle
+ * \param p_h Xmount cache handle
  * \param p_buf Buffer with block data
  * \param block Number of block under which to save given data
  * \return e_XmountCache_Error_None on success
@@ -193,11 +204,21 @@ te_XmountCache_Error XmountCache_BlockCacheAppend(pts_XmountCacheHandle p_h,
  * Checks if the given block has previously been cached. If it hasn't,
  * e_XmountCache_Error_UncachedBlock is returned.
  *
- * \param p_handle Xmount cache handle
+ * \param p_h Xmount cache handle
  * \param block Number of block to check
  * \return e_XmountCache_Error_None on success
  */
 te_XmountCache_Error XmountCache_IsBlockCached(pts_XmountCacheHandle p_h,
                                                uint64_t block);
+
+/*!
+ * \brief Translate GidaFS error into errno
+ *
+ * Translates the given GidaFS error code into its corresponding errno
+ *
+ * \param error_code GidaFS error
+ * \return errno
+ */
+int XmountCache_GidaFsError2Errno(teGidaFsError error_code);
 
 #endif // XMOUNT_CACHE_H

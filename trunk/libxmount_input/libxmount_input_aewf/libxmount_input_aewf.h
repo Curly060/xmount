@@ -136,7 +136,8 @@ typedef struct
    uint64_t             Offset;             // The offset of the table inside the segment file (start of t_AewfSectionTable, not of the preceding t_AewfSection)
    unsigned long        Size;               // The length of the table (same as allocated length for pEwfTable)
    uint32_t             ChunkCount;         // The number of chunk; this is the same as pTableData->Chunkcount, however, pTableData might not be available (NULL)
-   uint32_t             SectionSectorsSize; // Silly EWF format has no clean way of knowing size of the last (possibly compressed) chunk of a table
+   uint64_t             SectionSectorsPos;  // Seek position of corresponding section SECTORS in segment file and its length. Silly EWF format has no clean way
+   uint32_t             SectionSectorsSize; // of determining size of the last (possibly compressed) chunk of a table, that's why we need to memorise these values.
    time_t               LastUsed;           // Last usage of this table, for cache management
    t_pAewfSectionTable pEwfTable;           // Contains the original EWF table section or NULL, if never read or kicked out from cache
 } t_Table, *t_pTable;

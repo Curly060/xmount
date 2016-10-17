@@ -703,8 +703,8 @@ static int AewfReadChunkLegacy0 (t_pAewf pAewf, t_pTable pTable, uint64_t Absolu
 
    if (TableChunk < (pEwfTable->ChunkCount-1))
         ReadLen = (pEwfTable->OffsetArray[TableChunk+1] & ~AEWF_COMPRESSED) - Offset;
-   else ReadLen = (pTable->SectionSectorsSize - sizeof(t_AewfSection)) - (Offset - (pEwfTable->OffsetArray[0] & ~AEWF_COMPRESSED));
-//   else ReadLen = pAewf->ChunkBuffSize;  // This also  works! It looks as if uncompress is able to find out by itself the real size of the input data.
+   else ReadLen = pTable->SectionSectorsSize - (SeekPos - pTable->SectionSectorsPos);
+//   else ReadLen = pAewf->ChunkBuffSize;  // This also  works! It looks as if uncompress is able to find out by itself the real size of the input data. But this line could lead to reading beyond EOF...
 
    if (ReadLen > pAewf->ChunkBuffSize)
    {
@@ -916,8 +916,8 @@ static int AewfReadChunkMT0 (t_pAewf pAewf, t_pTable pTable, uint64_t AbsoluteCh
 
    if (TableChunk < (pEwfTable->ChunkCount-1))
         ReadLen = (pEwfTable->OffsetArray[TableChunk+1] & ~AEWF_COMPRESSED) - Offset;
-   else ReadLen = (pTable->SectionSectorsSize - sizeof(t_AewfSection)) - (Offset - (pEwfTable->OffsetArray[0] & ~AEWF_COMPRESSED));
-//   else ReadLen = pAewf->ChunkBuffSize;  // This also  works! It looks as if uncompress is able to find out by itself the real size of the input data.
+   else ReadLen = pTable->SectionSectorsSize - (SeekPos - pTable->SectionSectorsPos);
+//   else ReadLen = pAewf->ChunkBuffSize;  // This also  works! It looks as if uncompress is able to find out by itself the real size of the input data. But this line could lead to reading beyond EOF...
 
    if (ReadLen > pAewf->ChunkBuffSize)
    {
@@ -1179,6 +1179,7 @@ int AewfOpen (void *pHandle, const char **ppFilenameArr, uint64_t FilenameArrLen
    char                   *pHeader     = NULL;
    char                   *pHeader2    = NULL;
    int                      LastSection;
+   uint64_t                 SectionSectorsPos;
    unsigned int             SectionSectorsSize;
    unsigned                 HeaderLen  = 0;
    unsigned                 Header2Len = 0;
@@ -1242,6 +1243,7 @@ int AewfOpen (void *pHandle, const char **ppFilenameArr, uint64_t FilenameArrLen
    pAewf->Tables         = 0;
    pAewf->Chunks         = 0;
    pAewf->TotalTableSize = 0;
+   SectionSectorsPos     = 0;
    SectionSectorsSize    = 0;
 
    LOG ("Reading tables");
@@ -1259,6 +1261,7 @@ int AewfOpen (void *pHandle, const char **ppFilenameArr, uint64_t FilenameArrLen
 
          if (strcasecmp ((char *)Section.Type, "sectors") == 0)
          {
+            SectionSectorsPos  = Pos;
             SectionSectorsSize = Section.Size;
          }
          else if (strcasecmp ((char *)Section.Type, "table") == 0)
@@ -1279,12 +1282,14 @@ int AewfOpen (void *pHandle, const char **ppFilenameArr, uint64_t FilenameArrLen
             pTable->LastUsed           = 0;
             pTable->pEwfTable          = NULL;
             pTable->ChunkFrom          = pAewf->Chunks;
+            pTable->SectionSectorsPos  = SectionSectorsPos;
             pTable->SectionSectorsSize = SectionSectorsSize;
             pAewf->TotalTableSize     += pTable->Size;
             pAewf->Chunks             += pTable->ChunkCount;
             pTable->ChunkTo            = pAewf->Chunks-1;
             free (pEwfTable);
             pEwfTable = NULL;
+            SectionSectorsPos  = 0;
             SectionSectorsSize = 0;
          }
          else if ((strcasecmp ((char *)Section.Type, "header") == 0) && (pHeader==NULL))

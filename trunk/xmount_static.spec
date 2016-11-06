@@ -3,14 +3,14 @@
 Name:			xmount
 Summary:		Tool to crossmount between multiple input and output harddisk images
 Version:		0.7.5
-Release:		1%{?dist}
+Release:		1
 License:		GPL
 Group:			Applications/System
 URL:			https://www.pinguin.lu/xmount
 Source0:		%{name}-%{version}.tar.gz
 Buildroot:		%{_tmppath}/%{name}-%{version}-%{release}-root
-Requires:		fuse zlib libewf afflib
-BuildRequires:		cmake fuse-devel zlib-devel libewf-devel afflib-devel
+Requires:		fuse zlib
+BuildRequires:		cmake fuse-devel zlib-devel openssl-devel openssl-static
 
 %description
 xmount allows you to convert on-the-fly between multiple input and output
@@ -31,7 +31,7 @@ or alike.
 %build
 mkdir build
 cd build
-cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_SKIP_RPATH=ON -DCMAKE_INSTALL_PREFIX=%{_prefix} ..
+cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_SKIP_RPATH=ON -DCMAKE_INSTALL_PREFIX=%{_prefix} -DSTATIC=1 -DLINUX_DIST=rhel7 ..
 make %{?_smp_mflags}
 
 %install

@@ -4,12 +4,24 @@ project(xmount C)
 include(CheckIncludeFiles)
 #include(CheckCSourceCompiles)
 
-# Only for internal packaging
+# Only for internal packaging only
 #set(STATIC 1)
 if(STATIC)
   set(STATIC_EWF 1)
   set(STATIC_AFF 1)
 endif(STATIC)
+
+if(STATIC_AFF)
+  if(NOT LINUX_DIST)
+    set(LINUX_DIST "debian7")
+  else(NOT LINUX_DIST)
+    if(NOT (LINUX_DIST STREQUAL "debian7" OR
+            LINUX_DIST STREQUAL "rhel7"))
+      message(FATAL_ERROR "Only Linux dists 'debian7' and 'rhel7' are supported!")
+    endif(NOT (LINUX_DIST STREQUAL "debian7" OR
+               LINUX_DIST STREQUAL "rhel7"))
+  endif(NOT LINUX_DIST)
+endif(STATIC_AFF)
 
 add_definitions(-DXMOUNT_VERSION="0.7.5")
 

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* xmount Copyright (c) 2008-2016 by Gillen Daniel <gillen.dan@pinguin.lu>      *
+* xmount Copyright (c) 2008-2017 by Gillen Daniel <gillen.dan@pinguin.lu>      *
 *                                                                              *
 * xmount is a small tool to "fuse mount" various harddisk image formats as dd, *
 * vdi, vhd or vmdk files and enable virtual write access to them.              *
@@ -51,7 +51,7 @@
 #include "../libxmount/libxmount.h"
 
 #define XMOUNT_COPYRIGHT_NOTICE \
-  "xmount v%s Copyright (c) 2008-2016 by Gillen Daniel <gillen.dan@pinguin.lu>"
+  "xmount v%s Copyright (c) 2008-2017 by Gillen Daniel <gillen.dan@pinguin.lu>"
 
 #define LOG_WARNING(...) {            \
   LIBXMOUNT_LOG_WARNING(__VA_ARGS__); \

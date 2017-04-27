@@ -1,5 +1,5 @@
 /*******************************************************************************
-* xmount Copyright (c) 2008-2016 by Gillen Daniel <gillen.dan@pinguin.lu>      *
+* xmount Copyright (c) 2008-2017 by Gillen Daniel <gillen.dan@pinguin.lu>      *
 *                                                                              *
 * This module has been written by Guy Voncken. It contains the functions for   *
 * accessing simple AFF images created by Guymager.                             *

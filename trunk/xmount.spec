@@ -55,7 +55,7 @@ rm -fr %{buildroot}
 %doc AUTHORS COPYING INSTALL NEWS README ROADMAP
 
 %changelog
-* Sat Nov 05 2016 Daniel Gillen <gillen.dan@pinguin.lu> 0.7.5-1
+* Thu Apr 27 2017 Daniel Gillen <gillen.dan@pinguin.lu> 0.7.5-1
 * Release 0.7.5-1
   See NEWS for details
 — build package

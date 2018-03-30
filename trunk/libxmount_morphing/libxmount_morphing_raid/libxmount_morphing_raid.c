@@ -282,7 +282,7 @@ static int RaidOptionsParse(void *p_handle,
   char *p_buf;
 
   for(uint32_t i=0;i<options_count;i++) {
-    if(strcmp(pp_options[i]->p_key,"raid_chunksize")) {
+    if(strcmp(pp_options[i]->p_key,"raid_chunksize")==0) {
       // Convert value to uint32
       uint32value=StrToUint32(pp_options[i]->p_value,&ok);
       if(ok==0 || uint32value==0) {

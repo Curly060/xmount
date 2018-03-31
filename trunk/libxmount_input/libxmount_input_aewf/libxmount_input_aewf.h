@@ -1,5 +1,5 @@
 /*******************************************************************************
-* xmount Copyright (c) 2008-2017 by Gillen Daniel <gillen.dan@pinguin.lu>      *
+* xmount Copyright (c) 2008-2018 by Gillen Daniel <gillen.dan@pinguin.lu>      *
 *                                                                              *
 * This module has been written by Guy Voncken. It contains the functions for   *
 * accessing EWF images created by Guymager and others.                         *

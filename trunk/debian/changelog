@@ -1,3 +1,10 @@
+xmount (0.7.6) stable; urgency=low
+
+  * Fixed a bug in libxmount_morphing_raid avoiding parsing of raid_chunksize
+  * Removed obsolete warning about fuse group
+
+ -- Gillen Daniel <gillen.dan@pinguin.lu>  Sat, 31 Mar 2018 16:13:00 +0200
+
 xmount (0.7.5) stable; urgency=low
 
   * Improved and fixed the way fsname is built

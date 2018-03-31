@@ -327,9 +327,6 @@ static void CheckFuseSettings() {
              p_passwd->pw_name);
       return;
     }
-  } else {
-    printf("\nWARNING: Your system does not seem to have a \"fuse\" group. If "
-             "mounting works, you can ignore this message.\n\n");
   }
 #endif
 

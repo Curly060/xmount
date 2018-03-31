@@ -12,11 +12,11 @@
     <scripts>
       function check_for_fuse() {
         // Installed using .pkg
-        if(system.files.fileExistsAtPath('/Library/Filesystems/osxfusefs.fs/Support/osxfusefs.kext')==true) {
+        if(system.files.fileExistsAtPath('/Library/Filesystems/osxfusefs.fs')==true) {
           return true;
         }
         // Installed trough MacPorts
-        if(system.files.fileExistsAtPath('/opt/local/Library/Filesystems/osxfusefs.fs/Support/osxfusefs.kext')==true) {
+        if(system.files.fileExistsAtPath('/opt/local/Library/Filesystems/osxfusefs.fs')==true) {
           return true;
         }
         return false;

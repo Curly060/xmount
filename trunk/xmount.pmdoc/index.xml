@@ -14,9 +14,17 @@
         // Installed using .pkg
         if(system.files.fileExistsAtPath('/Library/Filesystems/osxfusefs.fs')==true) {
           return true;
+	}
+        // Same as above but for newer osxfuse versions
+        if(system.files.fileExistsAtPath('/Library/Filesystems/osxfuse.fs')==true) {
+          return true;
         }
         // Installed trough MacPorts
         if(system.files.fileExistsAtPath('/opt/local/Library/Filesystems/osxfusefs.fs')==true) {
+          return true;
+	}
+        // Same as above but for newer osxfuse versions
+        if(system.files.fileExistsAtPath('/opt/local/Library/Filesystems/osxfuse.fs')==true) {
           return true;
         }
         return false;

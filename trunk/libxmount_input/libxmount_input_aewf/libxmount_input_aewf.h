@@ -48,6 +48,9 @@ typedef struct
    unsigned short int EndOfFields;   // 0x0000
 } __attribute__ ((packed)) t_AewfFileHeader, *t_AewfpFileHeader;
 
+static const unsigned char AEWF_SIGNATURE[8]  = {0x45, 0x56, 0x46, 0x09, 0x0D, 0x0A, 0xFF, 0x00};
+
+
 typedef struct
 {
    unsigned char      Type[16];
@@ -262,6 +265,7 @@ enum
    AEWF_FILE_SEEK_FAILED,
    AEWF_FILE_READ_FAILED,
    AEWF_READFILE_BAD_MEM,
+   AEWF_BAD_SIGNATURE,
    AEWF_MISSING_SEGMENT_NUMBER,
    AEWF_DUPLICATE_SEGMENT_NUMBER,
    AEWF_WRONG_SEGMENT_FILE_COUNT,

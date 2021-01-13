@@ -1204,6 +1204,12 @@ int AewfOpen (void *pHandle, const char **ppFilenameArr, uint64_t FilenameArrLen
       CHK (OpenFile (&pFile, pSegment->pName))
       CHK (ReadFilePos (pAewf, pFile, (void*)&FileHeader, sizeof(FileHeader), 0))
 
+      if (memcmp (FileHeader.Signature, AEWF_SIGNATURE, sizeof (FileHeader.Signature)) != 0)
+      {
+         LOG ("Error: Bad signature in segment file %s, doesn't look like an EWF file");
+         return AEWF_BAD_SIGNATURE;
+      }
+
       pSegment->Number   = FileHeader.SegmentNumber;
       pSegment->LastUsed = 0;
       pSegment->pFile    = NULL;
@@ -1218,21 +1224,30 @@ int AewfOpen (void *pHandle, const char **ppFilenameArr, uint64_t FilenameArrLen
    for (unsigned i=0; i<pAewf->Segments; i++)
    {
       pSegment = &(pAewf->pSegmentArr[i]);
-      if (pPrevSegment)
-      {
-         if (pSegment->Number == pPrevSegment->Number)
-         {
-            LOG ("Error: Duplicate segment numbers");
-            LOG ("Segment files %s and %s have both segment number %u", pPrevSegment->pName, pSegment->pName, pSegment->Number);
-            return AEWF_DUPLICATE_SEGMENT_NUMBER;
-         }
-      }
       if (pSegment->Number != (i+1))
       {
-         LOG ("Error: Missing segment number(s)");
-         LOG ("Previous  segment file %s has segment number %u", pPrevSegment->pName, pPrevSegment->Number);
-         LOG ("Following segment file %s has segment number %u", pSegment->pName    , pSegment->Number    );
-         return AEWF_MISSING_SEGMENT_NUMBER;
+         if (pPrevSegment)
+         {
+            if (pSegment->Number == pPrevSegment->Number)
+            {
+               LOG ("Error: Duplicate segment numbers");
+               LOG ("Segment files %s and %s have both segment number %u", pPrevSegment->pName, pSegment->pName, pSegment->Number);
+               return AEWF_DUPLICATE_SEGMENT_NUMBER;
+            }
+            else
+            {
+               LOG ("Error: Missing segment number(s)");
+               LOG ("Previous  segment file %s has segment number %u", pPrevSegment->pName, pPrevSegment->Number);
+               LOG ("Following segment file %s has segment number %u", pSegment->pName    , pSegment->Number    );
+               return AEWF_MISSING_SEGMENT_NUMBER;
+            }
+         }
+         else 
+         {
+            LOG ("Error: Missing first segment file");
+            LOG ("Segment file %s has segment number %u", pSegment->pName, pSegment->Number);
+            return AEWF_MISSING_SEGMENT_NUMBER;
+         }
       }
       pPrevSegment = pSegment;
    }
@@ -1604,6 +1619,7 @@ static const char* AewfGetErrorMessage (int ErrNum)
       ADD_ERR (AEWF_FILE_SEEK_FAILED)
       ADD_ERR (AEWF_FILE_READ_FAILED)
       ADD_ERR (AEWF_READFILE_BAD_MEM)
+      ADD_ERR (AEWF_BAD_SIGNATURE)
 //      ADD_ERR (AEWF_MISSING_SEGMENT_NUMBER)
 //      ADD_ERR (AEWF_DUPLICATE_SEGMENT_NUMBER)
       case AEWF_MISSING_SEGMENT_NUMBER:

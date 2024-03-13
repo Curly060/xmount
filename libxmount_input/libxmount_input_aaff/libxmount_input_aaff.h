@@ -45,7 +45,7 @@ const uint64_t AAFF_CURRENTPAGE_NOTSET       = UINT64_MAX;
 #define AFF_GID_LENGTH   16
 #define AFF_SEGARG_U64   2  // Used as argument for segments that contain a 64 bit unsigned in the data field
 
-#define AFF_HEADER                    "AFF10\r\n"
+#define AFF_HEADER                    "AFF10\r\n" // Header is 7 chars plus trailing zero = 8 bytes
 #define AFF_SEGMENT_HEADER_MAGIC      "AFF"
 #define AFF_SEGMENT_FOOTER_MAGIC      "ATT"
 #define AFF_BADSECTOR_HEADER          "BAD SECTOR"
@@ -159,7 +159,13 @@ enum
    AAFF_CANNOT_READ_DATA,
    AAFF_INVALID_HEADER,
    AAFF_INVALID_FOOTER,
-   AAFF_TOO_MANY_HEADER_SEGEMENTS,
+   AAFF_TOO_MANY_HEADER_SEGMENTS,
+   AAFF_PAGESIZE_NOT_FOUND,
+   AAFF_SECTORSIZE_NOT_FOUND,
+   AAFF_SECTORCOUNT_NOT_FOUND,
+   AAFF_IMAGESIZE_NOT_FOUND,
+   AAFF_LIBVERSION_NOT_FOUND,
+   AAFF_FILETYPE_NOT_FOUND,
    AAFF_INVALID_PAGE_NUMBER,
    AAFF_UNEXPECTED_PAGE_NUMBER,
    AAFF_CANNOT_CLOSE_FILE,

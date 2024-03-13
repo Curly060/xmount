@@ -1,4 +1,4 @@
-XMOUNT README FILE                                                        v0.7.x
+XMOUNT README FILE                                                        v1.0.x
 
 Table of contents
   0.0 Author and license stuff
@@ -9,6 +9,8 @@ Table of contents
     2.3 libxmount_input_aewf
     2.4 libxmount_input_aff
     2.5 libxmount_input_aaff
+    2.6 libxmount_input_qcow
+    2.7 libxmount_input_vdi
   3.0 Morphing support
     3.1 libxmount_morphing_combine
     3.2 libxmount_morphing_raid
@@ -94,6 +96,14 @@ Table of contents
     Supports AFF (Advanced Forensic Format) images ("--in aaff") using an AFF
     implementation written by Guy Voncken. In essence, it is a lot faster than
     afflib.
+
+  2.6 libxmount_input_qcow
+    Supports QCOW (QEMU Copy On Write) files ("--in qcow") using an
+    implementation written by Guy Voncken.
+
+  2.7 libxmount_input_vdi
+    Supports VDI (VirtualBox's Virtual Disk Image) files ("--in vdi") using
+    an implementation written by Guy Voncken.
 
 3.0 Morphing support
   Also starting with xmount version 0.7.0, a new concept of input image morphing

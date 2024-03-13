@@ -694,7 +694,7 @@ static int AaffOptionsHelp (const char **ppHelp)
    wr = asprintf (&pHelp, "    %-12s : Maximum amount of RAM cache, in MiB, for image seek offsets. Default: %"PRIu64" MiB\n"
                           "    %-12s : Log file name.\n"
                           "    Specify full path for %s. The given file name is extended by _<pid>.\n"
-                          "    The AFF format has been declared as deprecated by its inventor!",
+                          "    The AFF format has been declared as deprecated by its inventor!\n",
                           AAFF_OPTION_MAXPAGEARRMEM, AAFF_DEFAULT_MAX_PAGE_ARR_MEM,
                           AAFF_OPTION_LOG,
                           AAFF_OPTION_LOG);

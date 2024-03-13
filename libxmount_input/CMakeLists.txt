@@ -24,8 +24,8 @@ find_package(LibZ)
 if(LIBZ_FOUND)
   add_subdirectory(libxmount_input_aewf)
   add_subdirectory(libxmount_input_aaff)
+  add_subdirectory(libxmount_input_qcow)
 endif(LIBZ_FOUND)
 
-add_subdirectory(libxmount_input_qcow)
 add_subdirectory(libxmount_input_vdi)
 

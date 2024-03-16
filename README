@@ -23,9 +23,12 @@ Table of contents
     4.5 Emulated VHD file
   5.0 Virtual write access
   6.0 Installation instructions
-    6.1 Prerequisits
-    6.1 Install from a package
+    6.1 Install from a prebuild package
     6.2 Install from source
+      6.2.1 General prerequisits
+      6.2.2 Installing prerequisits on Debian based systems
+      6.2.3 Installing prerequisits on OSx
+      6.2.4 Compilation / Installation
   7.0 xmount usage examples
 
 0.0 Author and license stuff
@@ -63,8 +66,9 @@ Table of contents
   VirtualBox's virtual disk file format (VDI), Microsoft's Virtual Hard Disk
   Image format (VHD) or in VmWare's VMDK file format.
 
-  Input images can be raw DD, EWF (Expert Witness Compression Format) or AFF
-  (Advanced Forensic Format) files.
+  Input images can be raw DD, EWF (Expert Witness Compression Format), AFF
+  (Advanced Forensic Format), VDI (VirtualBox Virtual Disk Image) or QCOW
+  (QEMU Copy On Write) files.
 
   In addition, xmount also supports virtual write access to the output files
   that is redirected to a cache file. This makes it for example possible to boot
@@ -184,39 +188,61 @@ Table of contents
   you can build xmount from source. The two methods are described in the
   following sections.
 
-  6.1 Prerequisits
-    SYSTEM:
-      - Linux: Some sort of Linux with a recent kernel (2.6.x or above).
-      - OSx: OSx 10.6 or above
-
-    FUSE:
-      Your OS must support FUSE and have the appropriate libraries installed.
-      (See http://fuse.sourceforge.net/ for more informations). On OSx, you can
-      use OSXFuse (https://osxfuse.github.io/) as replacement. To be able to
-      install from source, you also need the FUSE header files.
-
-    LIBEWF:
-      To enable EWF input image support. Get it from
-      http://sourceforge.net/projects/libewf/
-
-    LIBAFF:
-      To enable AFF input image support. Get it from http://www.afflib.org/
-
-  6.2 Install from a package
+  6.1 Install from a prebuild package
     Chances are I provide prebuild binary packages for Debian / Ubuntu and OSx.
     In this case, you only have to fire up your distribution's package manager
-    and install xmount. See https://www.sits.lu/xmount for more information
-    and download links.
+    and install xmount.
 
-  6.3 Install from source
-    After having checked the prerequisits, you should be able to compile and
-    install xmount by simply issuing the following commands:
+  6.2 Install from source
+    6.2.1 General prerequisits
+      SYSTEM:
+        - Linux: Some sort of Linux with a recent kernel (2.6.x or above).
+        - OSx: OSx 10.6 or above
 
-    $ mkdir build
-    $ cd build
-    $ cmake -DCMAKE_BUILD_TYPE=Release ..
-    $ make
-    $ sudo make install
+      FUSE:
+        Your OS must support FUSE and have the appropriate libraries installed.
+        (See http://fuse.sourceforge.net/ for more informations). On OSx, you can
+        use OSXFuse (https://osxfuse.github.io/) as replacement. To be able to
+        install from source, you also need the FUSE header files.
+
+      LIBEWF:
+        To enable EWF input image support. Get it from
+        https://github.com/libyal/libewf
+
+      LIBAFF:
+        To enable AFF input image support. Get it from
+        https://github.com/sshock/AFFLIBv3
+
+    6.2.2 Installing prerequisits on Debian based systems
+      $ sudo apt install build-essentials cmake libfuse-dev libewf-dev \
+        libafflib-dev libz3-dev pkg-config
+
+    6.2.3 Installing prerequisits on OSx
+      After installing OSXFuse and MacPorts (https://www.macports.org) issue the
+      following command in a terminal:
+
+      $ sudo port install autoconf automake cmake libtool pkgconfig readline
+
+      I recommend building xmount statically under OSx using the ewf and aff
+      libraries that are part of the xmount source tree. They can be compiled
+      using the following command:
+
+      $ ./BuildLibs.sh
+
+      Once they hav been compiled successfully, replace the cmake command below
+      with the following one:
+
+      $ cmake -DCMAKE_BUILD_TYPE=Release -DSTATIC=1 ..
+
+    6.2.4 Compilation / Installation
+      After having installed the prerequisits, you should be able to compile and
+      install xmount by simply issuing the following commands:
+
+      $ mkdir build
+      $ cd build
+      $ cmake -DCMAKE_BUILD_TYPE=Release ..
+      $ make
+      $ sudo make install
 
 7.0 xmount usage examples
   To xmount an EWF harddisk image from your acquired disk as a raw DD image

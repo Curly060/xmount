@@ -1,5 +1,7 @@
 xmount (1.0.0) stable; urgency=low
 
-  * Transfered project to SITS
+  * Added input support for vdi and qemu files
+  * Added various stability / hardening patches to libxmount_input_aewf and libxmount_input_aaff
+  * Updated libewf & libaaf to "latest" versions for static builds
 
- -- Gillen Daniel <development@sits.lu>  Sat, 31 Mar 2024 16:13:00 +0200
+ -- Gillen Daniel <development@sits.lu>  Fri, 15 Mar 2024 23:00:00 +0100

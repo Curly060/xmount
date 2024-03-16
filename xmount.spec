@@ -14,16 +14,16 @@ BuildRequires:		cmake fuse-devel zlib-devel libewf-devel afflib-devel
 
 %description
 xmount allows you to convert on-the-fly between multiple input and output
-harddisk image formats. xmount creates a virtual file system using FUSE
+harddisk image types. xmount creates a virtual file system using FUSE
 (Filesystem in Userspace) that contains a virtual representation of the input
-harddisk image. The virtual representation can be in raw DD, Apple's Disk Image
-format (DMG), VirtualBox's virtual disk file format (VDI), Microsoft's Virtual
-Hard Disk Image format (VHD) or in VmWare's VMDK file format. Input images can
-be raw DD, EWF (Expert Witness Compression Format) or AFF (Advanced Forensic
-Format) files. In addition, xmount also supports virtual write access to the
-output files that is redirected to a cache file. This makes it for example
-possible to boot acquired harddisk images using QEMU, KVM, VirtualBox, VMware
-or alike.
+image. The virtual representation can be in raw DD, Apple's Disk Image format (DMG),
+VirtualBox's virtual disk file format (VDI), VmWare's VMDK file format or Microsoft's
+Virtual Hard Disk Image format (VHD). Input images can be raw DD, EWF
+(Expert Witness Compression Format), AFF (Advanced Forensic Format),
+VDI (VirtualBox Virtual Disk Image) or QCOW (QEMU Copy On Write) files.
+In addition, xmount also supports virtual write access to the output files
+that is redirected to a cache file. This makes it possible to boot acquired
+harddisk images using QEMU, KVM, VirtualBox, VmWare or alike.
 
 %prep
 %setup -q
@@ -55,7 +55,7 @@ rm -fr %{buildroot}
 %doc AUTHORS COPYING INSTALL NEWS README ROADMAP
 
 %changelog
-* Sat Mar 31 2018 Daniel Gillen <development@sits.lu> 1.0.0-1
+* Fri Mar 15 2024 Daniel Gillen <development@sits.lu> 1.0.0-1
 * Release 1.0.0-1
   See NEWS for details
 — build package

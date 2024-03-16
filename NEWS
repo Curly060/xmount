@@ -3,7 +3,9 @@ For a full list of changes please refer to the source files.
 
 New for version 1.0.0:
   - Transfered project to SITS Sarl (https://code.sits.lu/foss/xmount)
-  - ...
+  - Added input support for vdi and qemu files (supplied by Guy Voncken)
+  - Added various stability / hardening patches to libxmount_input_aewf and libxmount_input_aaff (supplied by Guy Voncken)
+  - Updated libewf & libaaf to "latest" versions for static builds
 
 New for version 0.7.5:
   - Improved and fixed the way fsname is built.

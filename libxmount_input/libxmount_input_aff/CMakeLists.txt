@@ -4,8 +4,6 @@ endif(POLICY CMP0042)
 
 project(libxmount_input_aff C)
 
-add_library(xmount_input_aff SHARED libxmount_input_aff.c)
-
 if(NOT STATIC_AFF)
   include_directories(${LIBAFF_INCLUDE_DIRS})
   include_directories(${OPENSSL_INCLUDE_DIRS})
@@ -45,7 +43,16 @@ else(NOT STATIC_AFF)
         set(LIBS ${LIBS} "/usr/lib/librt.a")
       endif(LINUX_DIST STREQUAL "rhel7")
     endif(CMAKE_SIZEOF_VOID_P EQUAL 8)
-    set(LIBS ${LIBS} "-lstdc++ -lz")
+
+    if(CMAKE_THREAD_LIBS_INIT)
+      set(LIBS ${LIBS} ${CMAKE_THREAD_LIBS_INIT})
+    endif(CMAKE_THREAD_LIBS_INIT)
+
+    set(LIBS ${LIBS} "-lstdc++ -lz -ldl")
+
+    if(THREADS_HAVE_PTHREAD_ARG)
+      target_compile_options(xmount_input_aff PUBLIC "-pthread")
+    endif(THREADS_HAVE_PTHREAD_ARG)
   else(NOT APPLE)
     # As most of afflib's deps on OSx come from MacPorts, better link in
     # everything statically
@@ -59,7 +66,8 @@ else(NOT STATIC_AFF)
   endif(NOT APPLE)
 endif(NOT STATIC_AFF)
 
+add_library(xmount_input_aff SHARED libxmount_input_aff.c)
+
 target_link_libraries(xmount_input_aff ${LIBS})
 
 install(TARGETS xmount_input_aff DESTINATION lib/xmount)
-

@@ -4,7 +4,7 @@ project(xmount C)
 include(CheckIncludeFiles)
 #include(CheckCSourceCompiles)
 
-# Only for internal packaging only
+# For internal packaging only
 #set(STATIC 1)
 if(STATIC)
   set(STATIC_EWF 1)
@@ -69,6 +69,7 @@ check_include_files(endian.h HAVE_ENDIAN_H)
 check_include_files(libkern/OSByteOrder.h HAVE_LIBKERN_OSBYTEORDER_H)
 
 # Check for required libs
+find_package(Threads REQUIRED)
 if(NOT APPLE)
   find_package(LibFUSE REQUIRED)
 else(NOT APPLE)
@@ -88,18 +89,6 @@ add_definitions(-D_GNU_SOURCE)
 set(CMAKE_C_FLAGS "-fno-strict-aliasing -std=c99 -Wall")
 set(CMAKE_C_FLAGS_RELEASE "-O2 ${CMAKE_C_FLAGS}")
 set(CMAKE_C_FLAGS_DEBUG "-ggdb -O0 ${CMAKE_C_FLAGS}")
-
-# Check that off_t can represent 2**63 - 1 correctly.
-# If it can't, we need to set _FILE_OFFSET_BITS=64
-#check_c_source_compiles("
-#  #include <sys/types.h>
-#  #define LARGE_OFF_T (((off_t) 1 << 62) - 1 + ((off_t) 1 << 62))
-#  int off_t_is_large[(LARGE_OFF_T % 2147483629 == 721 && LARGE_OFF_T % 2147483647 == 1) ? 1 : -1];
-#  int main() { return 0; }
-#" _OFFT_IS_64BIT)
-#if(NOT ${_OFFT_IS_64BIT})
-#  set(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} "-D_FILE_OFFSET_BITS=64")
-#endif(NOT ${_OFFT_IS_64BIT})
 
 # Compile stuff in sub dirs
 add_subdirectory(libxmount_input)

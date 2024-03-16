@@ -24,7 +24,7 @@ else(PKGC_LIBOSXFUSE_FOUND)
 
   find_path(LIBOSXFUSE_INCLUDE_DIR fuse.h
             PATH_SUFFIXES fuse)
-  find_library(LIBOSXFUSE_LIBRARY NAMES osxfuse libosxfuse)
+  find_library(LIBOSXFUSE_LIBRARY NAMES osxfuse fuse libosxfuse libfuse)
 
   if(CMAKE_DEBUG)
     message(STATUS "\${LIBOSXFUSE_LIBRARY} = ${LIBOSXFUSE_LIBRARY}")

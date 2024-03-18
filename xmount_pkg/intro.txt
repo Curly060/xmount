@@ -1,0 +1,3 @@
+This program will guide you through the steps necessary to install xmount on your system.
+
+Please make sure to install MacFUSE from https://osxfuse.github.io/ prior to running this setup.

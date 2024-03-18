@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Create OSx package using Packages (http://s.sudre.free.fr/Software/Packages/about.html)
+
 if [ "$(whoami)" != "root" ]; then
   echo "ERROR: This script has to be run as root!"
   exit 1
@@ -7,16 +9,14 @@ fi
 
 CWD=`dirname "$0"`
 CWD=`cd "$CWD"; pwd`
-DSTROOT="$CWD/dstroot"
+DSTROOT="$CWD/xmount_pkg/dstroot"
 FULL_PKG_NAME=`basename "$CWD"`
 PKG_VERSION=`echo "$FULL_PKG_NAME" | cut -d"-" -f2`
-PKG_SVERSION=`echo "$PKG_VERSION" | tr -d "."`
 
 echo "==== PKG build settings ==="
 echo "\$CWD=\"$CWD\""
 echo "\$DSTROOT=\"$DSTROOT\""
 echo "\$PKG_VERSION=\"$PKG_VERSION\""
-echo "\$PKG_SVERSION=\"$PKG_SVERSION\""
 echo
 echo "Press any key to continue or Ctrl-C to cancel"
 read
@@ -33,18 +33,9 @@ find "$CWD"/build/libxmount_input -name "libxmount_input_*.dylib" -exec cp "{}" 
 find "$CWD"/build/libxmount_morphing -name "libxmount_morphing_*.dylib" -exec cp "{}" "$DSTROOT"/usr/local/lib/xmount/ \;
 cp "$CWD"/xmount.1 "$DSTROOT"/usr/local/share/man/man1/
 
-# Patch 01dstroot-contents.xml
-sed -i -e "s#PMDOC_DSTROOT#$DSTROOT#g" "$CWD"/xmount.pmdoc/01dstroot-contents.xml
+# Patch project file
+sed -i -e "s#%%XMOUNT_VERSION%%#$PKG_VERSION#g" "$CWD"/xmount_pkg/xmount.pkgproj
 
-# Patch 01dstroot.xml
-sed -i -e "s#PMDOC_DSTROOT#$DSTROOT#g" "$CWD"/xmount.pmdoc/01dstroot.xml
-sed -i -e "s/PMDOC_VERSION/$PKG_VERSION/g" "$CWD"/xmount.pmdoc/01dstroot.xml
-sed -i -e "s/PMDOC_SVERSION/$PKG_SVERSION/g" "$CWD"/xmount.pmdoc/01dstroot.xml
-
-# Patch index.xml
-sed -i -e "s#PMDOC_CWD#$CWD#g" "$CWD"/xmount.pmdoc/index.xml
-sed -i -e "s/PMDOC_VERSION/$PKG_VERSION/g" "$CWD"/xmount.pmdoc/index.xml
-sed -i -e "s/PMDOC_SVERSION/$PKG_SVERSION/g" "$CWD"/xmount.pmdoc/index.xml
-
-open "$CWD"/xmount.pmdoc
+#open "$CWD"/xmount_pkg/xmount.pkgproj
+packagesbuild "$CWD/xmount_pkg/xmount.pkgproj"
 

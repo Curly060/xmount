@@ -214,8 +214,15 @@ Table of contents
         https://github.com/sshock/AFFLIBv3
 
     6.2.2 Installing prerequisits on Debian based systems
-      $ sudo apt install build-essentials cmake libfuse-dev libewf-dev \
-        libafflib-dev libz3-dev pkg-config
+      For shared builds:
+
+      $ sudo apt install build-essential cmake pkg-config libfuse-dev \
+        zlib1g-dev libewf-dev libafflib-dev
+
+      For static builds:
+
+      $ sudo apt install build-essential cmake pkg-config autoconf automake \
+        libfuse-dev zlib1g-dev libssl-dev libexpat1-dev libtool bison flex
 
     6.2.3 Installing prerequisits on OSx
       After installing OSXFuse and MacPorts (https://www.macports.org) issue the

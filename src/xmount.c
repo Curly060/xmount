@@ -212,6 +212,8 @@ static void PrintUsage(char *p_prog_name) {
 
   printf("    --owcache <file> : Same as --cache <file> but overwrites "
            "existing cache file.\n");
+  printf("    --rocache <file> : Same as --cache <file> but does **not** " \
+           "allow further writes.\n");
   printf("    --sizelimit <size> : The data end of input image(s) is set to no "
            "more than <size> bytes after the data start.\n");
   printf("    --version : Same as --info.\n");
@@ -640,6 +642,18 @@ static int ParseCmdLine(const int argc, char **pp_argv) {
           return FALSE;
         }
         LOG_DEBUG("Enabling virtual write support overwriting cache file %s\n",
+                  glob_xmount.cache.p_cache_file)
+      } else if(strcmp(pp_argv[i],"--rocache")==0) {
+        // Enable read only access to mounted image using previously created cache
+        // Next parameter must be cache file to read changes from
+        if((i+1)<argc) {
+          i++;
+          XMOUNT_STRSET(glob_xmount.cache.p_cache_file,pp_argv[i])
+        } else {
+          LOG_ERROR("You must specify a cache file!\n")
+          return FALSE;
+        }
+        LOG_DEBUG("Enabling read only cache file %s\n",
                   glob_xmount.cache.p_cache_file)
       } else if(strcmp(pp_argv[i],"--sizelimit")==0) {
         // Set input image size limit
@@ -1117,7 +1131,7 @@ static int GetVirtImageData(char *p_buf, off_t offset, size_t size) {
         } else {
           cur_to_read=to_read;
         }
-        if(glob_xmount.output.writable==TRUE &&
+        if(glob_xmount.cache.h_cache_file!=NULL &&
            glob_xmount.cache.p_cache_header->VdiFileHeaderCached==TRUE)
         {
           // VDI header was already cached
@@ -1184,10 +1198,10 @@ static int GetVirtImageData(char *p_buf, off_t offset, size_t size) {
     if(block_off+to_read>CACHE_BLOCK_SIZE) {
       cur_to_read=CACHE_BLOCK_SIZE-block_off;
     } else cur_to_read=to_read;
-    if(glob_xmount.output.writable==TRUE &&
+    if(glob_xmount.cache.h_cache_file!=NULL &&
        glob_xmount.cache.p_cache_blkidx[cur_block].Assigned==TRUE)
     {
-      // Write support enabled and need to read altered data from cachefile
+      // Cache file specified, need to read altered data from cachefile
       if(fseeko(glob_xmount.cache.h_cache_file,
                 glob_xmount.cache.p_cache_blkidx[cur_block].off_data+block_off,
                 SEEK_SET)!=0)
@@ -1203,7 +1217,7 @@ static int GetVirtImageData(char *p_buf, off_t offset, size_t size) {
       LOG_DEBUG("Read %zd bytes at offset %" PRIu64
                 " from cache file\n",cur_to_read,file_off)
     } else {
-      // No write support or data not cached
+      // No cache file specified or data not cached
       ret=GetMorphedImageData(p_buf,file_off,cur_to_read,&read);
       if(ret!=TRUE || read!=cur_to_read) {
         LOG_ERROR("Couldn't read data from virtual image!\n")
@@ -1231,7 +1245,7 @@ static int GetVirtImageData(char *p_buf, off_t offset, size_t size) {
         break;
       case VirtImageType_VHD:
         // Micro$oft has choosen to use a footer rather then a header.
-        if(glob_xmount.output.writable==TRUE &&
+        if(glob_xmount.cache.h_cache_file!=NULL &&
            glob_xmount.cache.p_cache_header->VhdFileHeaderCached==TRUE)
         {
           // VHD footer was already cached
@@ -3866,7 +3880,7 @@ int main(int argc, char *argv[]) {
       break;
   }
 
-  if(glob_xmount.output.writable) {
+  if(glob_xmount.cache.p_cache_file!=NULL) {
     // Init cache file and cache file block index
     if(!InitCacheFile()) {
       LOG_ERROR("Couldn't initialize cache file!\n")

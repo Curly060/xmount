@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.0)
 project(xmount C)
 
 include(CheckIncludeFiles)
@@ -9,6 +9,7 @@ include(CheckIncludeFiles)
 if(STATIC)
   set(STATIC_EWF 1)
   set(STATIC_AFF 1)
+  set(STATIC_AFF4 1)
 endif(STATIC)
 
 if(STATIC_AFF)

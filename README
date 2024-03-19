@@ -26,9 +26,10 @@ Table of contents
     6.1 Install from a prebuild package
     6.2 Install from source
       6.2.1 General prerequisits
-      6.2.2 Installing prerequisits on Debian based systems
-      6.2.3 Installing prerequisits on OSx
-      6.2.4 Compilation / Installation
+      6.2.2 Shared vs static builds
+      6.2.3 Installing prerequisits on Debian based systems
+      6.2.4 Installing prerequisits on OSx
+      6.2.5 Compilation / Installation
   7.0 xmount usage examples
 
 0.0 Author and license stuff
@@ -202,18 +203,47 @@ Table of contents
       FUSE:
         Your OS must support FUSE and have the appropriate libraries installed.
         (See http://fuse.sourceforge.net/ for more informations). On OSx, you can
-        use OSXFuse (https://osxfuse.github.io/) as replacement. To be able to
+        use MacFuse (https://osxfuse.github.io/) as replacement. To be able to
         install from source, you also need the FUSE header files.
 
       LIBEWF:
         To enable EWF input image support. Get it from
-        https://github.com/libyal/libewf
+        https://github.com/libyal/libewf or use the version that is part of the
+        xmount source tree.
 
-      LIBAFF:
-        To enable AFF input image support. Get it from
-        https://github.com/sshock/AFFLIBv3
+      LIBAFF3:
+        To enable AFFv3 input image support. Get it from
+        https://github.com/sshock/AFFLIBv3 or use the version that is part of
+        the xmount source tree.
 
-    6.2.2 Installing prerequisits on Debian based systems
+      LIBAFF4:
+        To enable AFFv4 input image support. Get it from
+        https://github.com/aff4/aff4-cpp-lite or use the version that is part
+        of the xmount source tree.
+
+    6.2.2 Shared vs static builds
+      Shared xmount builds will rely on the libraries installed on your system
+      during build to also be available during execution. This is generally the
+      preferred method to build software on Linux.
+
+      Static xmount builds will incorporate **some** "problematic" libraries
+      into the final binary so they don't have to be present on your system
+      during execution. These libraries generally lack pre-packaged builds or a
+      very specific version is needed. All other used libraries will still be
+      dynamically linked.
+
+      Statically linked xmount builds are for example used to be able to support
+      multiple Debian versions with the same binary, support input image formats
+      for which no libraries exist under Debian, or to support OSx at all.
+
+      Packages released trough the official Debian / Ubuntu package repositories
+      always include dynamically linked builds and might therefore lack some
+      functionality.
+
+      Packages released trough our own repository will always include statically
+      linked builds and therefore include all available functionality.
+
+    6.2.3 Installing prerequisits on Debian based systems
       For shared builds:
 
       $ sudo apt install build-essential cmake pkg-config libfuse-dev \
@@ -222,13 +252,15 @@ Table of contents
       For static builds:
 
       $ sudo apt install build-essential cmake pkg-config autoconf automake \
-        libfuse-dev zlib1g-dev libssl-dev libexpat1-dev libtool bison flex
+        libfuse-dev zlib1g-dev libssl-dev libexpat1-dev liblz4-dev libxml2-dev \
+        libcppunit-dev libtool bison flex
 
-    6.2.3 Installing prerequisits on OSx
+    6.2.4 Installing prerequisits on OSx
       After installing OSXFuse and MacPorts (https://www.macports.org) issue the
       following command in a terminal:
 
-      $ sudo port install autoconf automake cmake libtool pkgconfig readline
+      $ sudo port install autoconf automake cmake libtool pkgconfig readline \
+        cppunit
 
       I recommend building xmount statically under OSx using the ewf and aff
       libraries that are part of the xmount source tree. They can be compiled
@@ -241,7 +273,7 @@ Table of contents
 
       $ cmake -DCMAKE_BUILD_TYPE=Release -DSTATIC=1 ..
 
-    6.2.4 Compilation / Installation
+    6.2.5 Compilation / Installation
       After having installed the prerequisits, you should be able to compile and
       install xmount by simply issuing the following commands:
 

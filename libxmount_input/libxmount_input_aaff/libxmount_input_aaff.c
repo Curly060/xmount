@@ -419,7 +419,19 @@ static int AaffReadPage (t_pAaff pAaff, uint64_t Page, char **ppBuffer, uint32_t
 //  API functions
 // ---------------
 
-static int AaffCreateHandle (void **ppHandle, const char *pFormat, uint8_t Debug)
+static int AaffInit(void **pp_init_handle)
+{
+    *pp_init_handle = NULL;
+
+    return AAFF_OK;
+}
+
+static int AaffDeInit(void **pp_init_handle)
+{
+    return AAFF_OK;
+}
+
+static int AaffCreateHandle (void **ppHandle, void *p_init_handle, const char *pFormat, uint8_t Debug)
 {
    t_pAaff pAaff;
 
@@ -874,6 +886,8 @@ const char* LibXmount_Input_GetSupportedFormats ()
 
 void LibXmount_Input_GetFunctions(ts_LibXmountInputFunctions *pFunctions)
 {
+  pFunctions->Init               = &AaffInit;
+  pFunctions->DeInit             = &AaffDeInit;
   pFunctions->CreateHandle       = &AaffCreateHandle;
   pFunctions->DestroyHandle      = &AaffDestroyHandle;
   pFunctions->Open               = &AaffOpen;

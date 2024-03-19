@@ -53,6 +53,8 @@ const char* LibXmount_Input_GetSupportedFormats() {
  * LibXmount_Input_GetFunctions
  */
 void LibXmount_Input_GetFunctions(ts_LibXmountInputFunctions *p_functions) {
+    p_functions->Init = &QcowInit;
+    p_functions->DeInit = &QcowDeInit;
     p_functions->CreateHandle = &QcowCreateHandle;
     p_functions->DestroyHandle = &QcowDestroyHandle;
     p_functions->Open = &QcowOpen;
@@ -233,9 +235,28 @@ static int QcowRead0(t_pQcow pQcow, char *pBuffer, uint64_t Seek, uint32_t *pCou
 }
 
 /*
+ * QcowInit
+ */
+static int QcowInit(void **pp_init_handle)
+{
+    *pp_init_handle = NULL;
+
+    return QCOW_OK;
+}
+
+/*
+ * QcowDeInit
+ */
+static int QcowDeInit(void **pp_init_handle)
+{
+    return QCOW_OK;
+}
+
+/*
  * QcowCreateHandle
  */
 static int QcowCreateHandle(void **ppHandle,
+                            void *p_init_handle,
                             const char *pFormat,
                             uint8_t Debug)
 {

@@ -2431,7 +2431,9 @@ static int LoadLibs() {
 
       // Get, set and check lib_functions
       pfun_input_GetFunctions(&(p_input_lib->lib_functions));
-      if(p_input_lib->lib_functions.CreateHandle==NULL ||
+      if(p_input_lib->lib_functions.Init==NULL ||
+         p_input_lib->lib_functions.DeInit==NULL ||
+         p_input_lib->lib_functions.CreateHandle==NULL ||
          p_input_lib->lib_functions.DestroyHandle==NULL ||
          p_input_lib->lib_functions.Open==NULL ||
          p_input_lib->lib_functions.Close==NULL ||
@@ -2793,6 +2795,14 @@ static void FreeResources() {
                 DestroyHandle(&(glob_xmount.input.pp_images[i]->p_handle));
           if(ret!=0) {
             LOG_ERROR("Unable to destroy input image handle: %s\n",
+                      glob_xmount.input.pp_images[i]->p_functions->
+                        GetErrorMessage(ret));
+          }
+          ret = glob_xmount.input.pp_images[i]->p_functions->
+            DeInit(&(glob_xmount.input.pp_images[i]->p_functions->p_init_handle));
+          if (ret != 0)
+          {
+            LOG_ERROR("Unable to destroy input library initialization handle: %s\n",
                       glob_xmount.input.pp_images[i]->p_functions->
                         GetErrorMessage(ret));
           }
@@ -3648,9 +3658,26 @@ int main(int argc, char *argv[]) {
       return 1;
     }
 
+    // Init input library if this is the first time it will be used
+    if (glob_xmount.input.pp_images[i]->p_functions->is_initialized == 0)
+    {
+        ret = glob_xmount.input.pp_images[i]->p_functions->Init(
+                &(glob_xmount.input.pp_images[i]->p_functions->p_init_handle));
+        if (ret != 0)
+        {
+            LOG_ERROR("Unable to init input library: %s!\n",
+                glob_xmount.input.pp_images[i]->p_functions->
+                  GetErrorMessage(ret));
+            FreeResources();
+            return 1;
+        }
+        glob_xmount.input.pp_images[i]->p_functions->is_initialized = 1;
+    }
+
     // Init input image handle
     ret=glob_xmount.input.pp_images[i]->p_functions->
           CreateHandle(&(glob_xmount.input.pp_images[i]->p_handle),
+                       glob_xmount.input.pp_images[i]->p_functions->p_init_handle,
                        glob_xmount.input.pp_images[i]->p_type,
                        glob_xmount.debug);
     if(ret!=0) {
@@ -3661,6 +3688,7 @@ int main(int argc, char *argv[]) {
       FreeResources();
       return 1;
     }
+    LOG_DEBUG("Input image handle created successfully.\n");
 
     // Parse input lib specific options
     if(glob_xmount.input.pp_lib_params!=NULL) {
@@ -3693,6 +3721,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Open input image
+    LOG_DEBUG("Opening input image...\n");
     ret=
       glob_xmount.input.pp_images[i]->
         p_functions->
@@ -3707,6 +3736,7 @@ int main(int argc, char *argv[]) {
       FreeResources();
       return 1;
     }
+    LOG_DEBUG("Input image openend successfully.\n");
 
     // Determine input image size
     ret=glob_xmount.input.pp_images[i]->

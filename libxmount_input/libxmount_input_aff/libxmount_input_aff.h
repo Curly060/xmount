@@ -46,7 +46,10 @@ typedef struct s_AffHandle {
 /*******************************************************************************
  * Forward declarations
  ******************************************************************************/
+static int AffInit(void **pp_init_handle);
+static int AffDeInit(void **pp_init_handle);
 static int AffCreateHandle(void **pp_handle,
+                           void *p_init_handle,
                            const char *p_format,
                            uint8_t debug);
 static int AffDestroyHandle(void **pp_handle);

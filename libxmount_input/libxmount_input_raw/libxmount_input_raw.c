@@ -51,6 +51,8 @@ const char* LibXmount_Input_GetSupportedFormats() {
  * LibXmount_Input_GetFunctions
  */
 void LibXmount_Input_GetFunctions(ts_LibXmountInputFunctions *p_functions) {
+  p_functions->Init=&RawInit;
+  p_functions->DeInit=&RawDeInit;
   p_functions->CreateHandle=&RawCreateHandle;
   p_functions->DestroyHandle=&RawDestroyHandle;
   p_functions->Open=&RawOpen;
@@ -119,9 +121,28 @@ static int RawRead0(t_praw praw, char *pBuffer, uint64_t Seek, uint32_t *pCount)
 // ---------------
 
 /*
+ * RawInit
+ */
+static int RawInit(void **pp_init_handle)
+{
+    *pp_init_handle = NULL;
+
+    return RAW_OK;
+}
+
+/*
+ * RawDeInit
+ */
+static int RawDeInit(void **pp_init_handle)
+{
+    return RAW_OK;
+}
+
+/*
  * RawCreateHandle
  */
 static int RawCreateHandle(void **pp_handle,
+                           void *p_init_handle,
                            const char *p_format,
                            uint8_t debug)
 {

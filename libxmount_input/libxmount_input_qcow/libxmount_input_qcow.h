@@ -111,7 +111,10 @@ typedef struct {
 /*******************************************************************************
  * Forward declarations
  ******************************************************************************/
+static int QcowInit(void **pp_init_handle);
+static int QcowDeInit(void **pp_init_handle);
 static int QcowCreateHandle(void **ppHandle,
+                            void *p_init_handle,
                             const char *pFormat,
                             uint8_t Debug);
 static int QcowDestroyHandle(void **ppHandle);

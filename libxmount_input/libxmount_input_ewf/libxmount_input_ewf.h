@@ -58,7 +58,10 @@ typedef struct s_EwfHandle {
 /*******************************************************************************
  * Forward declarations
  ******************************************************************************/
+static int EwfInit(void **pp_init_handle);
+static int EwfDeInit(void **pp_init_handle);
 static int EwfCreateHandle(void **pp_handle,
+                           void *p_init_handle,
                            const char *p_format,
                            uint8_t debug);
 static int EwfDestroyHandle(void **pp_handle);

@@ -21,7 +21,7 @@
 #ifndef LIBXMOUNT_INPUT_H
 #define LIBXMOUNT_INPUT_H
 
-#define LIBXMOUNT_INPUT_API_VERSION 1
+#define LIBXMOUNT_INPUT_API_VERSION 2
 
 #include <config.h>
 
@@ -33,6 +33,34 @@
 
 //! Structure containing pointers to the lib's functions
 typedef struct s_LibXmountInputFunctions {
+  //! Function to initialize input library
+  /*!
+   * For every input library, this function is called exactly once before
+   * the first call to CreateHandle. If you need to do global one-time
+   * initialization of external libraries, or want to share data between all
+   * opened handles of your input library, this is the place to do it.
+   *
+   * The returned init handle will be passed to every call to CreateHandle.
+   *
+   * \param pp_init_handle Pointer to init handle
+   * \return 0 on success or error code
+   */
+  int (*Init)(void **pp_init_handle);
+
+  //! Function to de-initialize input library
+  /*!
+   * In this function, any structures allocated with Init should be freed.
+   * There will be no further calls to this input library once this function
+   * has been called.
+   *
+   * By convention, after this function has been called, *pp_handle must be
+   * NULL.
+   *
+   * \param pp_init_handle Pointer to init handle
+   * \return 0 on success or error code
+   */
+  int (*DeInit)(void **pp_init_handle);
+
   //! Function to initialize handle
   /*!
    * This function is called once to allow the lib to alloc any needed
@@ -43,11 +71,13 @@ typedef struct s_LibXmountInputFunctions {
    * LibXmount_Input_GetSupportedFormats() which should be used for this handle.
    *
    * \param pp_handle Pointer to handle
+   * \param p_init_handle Library initialization handle
    * \param p_format Input image format
    * \param debug If set to 1, print debugging infos to stdout
    * \return 0 on success or error code
    */
   int (*CreateHandle)(void **pp_handle,
+                      void *p_init_handle,
                       const char *p_format,
                       uint8_t debug);
 
@@ -189,6 +219,12 @@ typedef struct s_LibXmountInputFunctions {
    * \return 0 on success or error code
    */
   int (*FreeBuffer)(void *p_buf);
+
+  //! Init handle
+  void *p_init_handle;
+
+  //! Library initialization flag
+  uint8_t is_initialized;
 } ts_LibXmountInputFunctions, *pts_LibXmountInputFunctions;
 
 //! Get library API version

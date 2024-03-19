@@ -258,9 +258,28 @@ static int VdiParseHeader(t_pVdi pVdi) {
 // ---------------
 
 /*
+ * VdiInit
+ */
+static int VdiInit(void **pp_init_handle)
+{
+    *pp_init_handle = NULL;
+
+    return VDI_OK;
+}
+
+/*
+ * VdiDeInit
+ */
+static int VdiDeInit(void **pp_init_handle)
+{
+    return VDI_OK;
+}
+
+/*
  * VdiCreateHandle
  */
 static int VdiCreateHandle(void **ppHandle,
+                           void *p_init_handle,
                            const char *pFormat,
                            uint8_t Debug)
 {

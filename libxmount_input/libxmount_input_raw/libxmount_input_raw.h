@@ -87,7 +87,10 @@ typedef struct {
 /*******************************************************************************
  * Forward declarations
  ******************************************************************************/
+static int RawInit(void **pp_init_handle);
+static int RawDeInit(void **pp_init_handle);
 static int RawCreateHandle(void **pp_handle,
+                           void *p_init_handle,
                            const char *p_format,
                            uint8_t debug);
 static int RawDestroyHandle(void **pp_handle);

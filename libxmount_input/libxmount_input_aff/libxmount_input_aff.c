@@ -46,13 +46,15 @@ uint8_t LibXmount_Input_GetApiVersion() {
  * LibXmount_Input_GetSupportedFormats
  */
 const char* LibXmount_Input_GetSupportedFormats() {
-  return "aff\0\0";
+  return "aff\0aff3\0\0";
 }
 
 /*
  * LibXmount_Input_GetFunctions
  */
 void LibXmount_Input_GetFunctions(ts_LibXmountInputFunctions *p_functions) {
+  p_functions->Init=&AffInit;
+  p_functions->DeInit=&AffDeInit;
   p_functions->CreateHandle=&AffCreateHandle;
   p_functions->DestroyHandle=&AffDestroyHandle;
   p_functions->Open=&AffOpen;
@@ -70,9 +72,28 @@ void LibXmount_Input_GetFunctions(ts_LibXmountInputFunctions *p_functions) {
  * Private
  ******************************************************************************/
 /*
+ * AffInit
+ */
+static int AffInit(void **pp_init_handle)
+{
+    *pp_init_handle = NULL;
+
+    return AFF_OK;
+}
+
+/*
+ * AffDeInit
+ */
+static int AffDeInit(void **pp_init_handle)
+{
+    return AFF_OK;
+}
+
+/*
  * AffCreateHandle
  */
 static int AffCreateHandle(void **pp_handle,
+                           void *p_init_handle,
                            const char *p_format,
                            uint8_t debug)
 {

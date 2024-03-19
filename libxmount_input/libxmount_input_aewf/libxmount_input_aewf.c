@@ -1185,6 +1185,18 @@ static uint32_t GetCPUs (t_pAewf pAewf)
 //  API functions
 // ---------------
 
+static int AewfInit(void **pp_init_handle)
+{
+    *pp_init_handle = NULL;
+
+    return AEWF_OK;
+}
+
+static int AewfDeInit(void **pp_init_handle)
+{
+    return AEWF_OK;
+}
+
 static inline int AewfCheckHandle (void *pHandle)
 {
    t_pAewf pAewf = (t_pAewf) pHandle;
@@ -1228,7 +1240,7 @@ static int AewfInitHandle (void *pHandle)
    return AEWF_OK;
 }
 
-static int AewfCreateHandle (void **ppHandle, const char *pFormat, uint8_t Debug)
+static int AewfCreateHandle (void **ppHandle, void *p_init_handle, const char *pFormat, uint8_t Debug)
 {
    t_pAewf pAewf;
 
@@ -1933,6 +1945,8 @@ const char* LibXmount_Input_GetSupportedFormats ()
 
 void LibXmount_Input_GetFunctions (ts_LibXmountInputFunctions *pFunctions)
 {
+   pFunctions->Init               = &AewfInit;
+   pFunctions->DeInit             = &AewfDeInit;
    pFunctions->CreateHandle       = &AewfCreateHandle;
    pFunctions->DestroyHandle      = &AewfDestroyHandle;
    pFunctions->Open               = &AewfOpen;

@@ -143,7 +143,10 @@ typedef struct {
 /*******************************************************************************
  * Forward declarations
  ******************************************************************************/
+static int VdiInit(void **pp_init_handle);
+static int VdiDeInit(void **pp_init_handle);
 static int VdiCreateHandle(void **ppHandle,
+                           void *p_init_handle,
                            const char *pFormat,
                            uint8_t Debug);
 static int VdiDestroyHandle(void **ppHandle);

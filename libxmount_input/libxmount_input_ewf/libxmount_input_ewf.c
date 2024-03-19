@@ -57,6 +57,8 @@ const char* LibXmount_Input_GetSupportedFormats() {
  * LibXmount_Input_GetFunctions
  */
 void LibXmount_Input_GetFunctions(ts_LibXmountInputFunctions *p_functions) {
+  p_functions->Init=&EwfInit;
+  p_functions->DeInit=&EwfDeInit;
   p_functions->CreateHandle=&EwfCreateHandle;
   p_functions->DestroyHandle=&EwfDestroyHandle;
   p_functions->Open=&EwfOpen;
@@ -74,9 +76,28 @@ void LibXmount_Input_GetFunctions(ts_LibXmountInputFunctions *p_functions) {
  * Private
  ******************************************************************************/
 /*
+ * EwfInit
+ */
+static int EwfInit(void **pp_init_handle)
+{
+    *pp_init_handle = NULL;
+
+    return EWF_OK;
+}
+
+/*
+ * EwfDeInit
+ */
+static int EwfDeInit(void **pp_init_handle)
+{
+    return EWF_OK;
+}
+
+/*
  * EwfCreateHandle
  */
 static int EwfCreateHandle(void **pp_handle,
+                           void *p_init_handle,
                            const char *p_format,
                            uint8_t debug)
 {

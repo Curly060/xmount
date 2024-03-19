@@ -2,15 +2,17 @@ XMOUNT README FILE                                                        v1.0.x
 
 Table of contents
   0.0 Author and license stuff
+  0.1 Used external libraries
   1.0 What is xmount? - A short description
   2.0 Input image support
     2.1 libxmount_input_raw
     2.2 libxmount_input_ewf
     2.3 libxmount_input_aewf
     2.4 libxmount_input_aff
-    2.5 libxmount_input_aaff
-    2.6 libxmount_input_qcow
-    2.7 libxmount_input_vdi
+    2.5 libxmount_input_aff4
+    2.6 libxmount_input_aaff
+    2.7 libxmount_input_qcow
+    2.8 libxmount_input_vdi
   3.0 Morphing support
     3.1 libxmount_morphing_combine
     3.2 libxmount_morphing_raid
@@ -50,12 +52,46 @@ Table of contents
   You should have received a copy of the GNU General Public License along with
   this program. If not, see <http://www.gnu.org/licenses/>.
 
-  ---
+0.1 Used external libraries
+  xmount's input libraries rely on various other external open source libraries:
 
-  Due to AFFLIB, I have to mention that:
+  --- libewf
+
+  Copyright (C) 2006-2024, Joachim Metz <joachim.metz@gmail.com>
+
+  --- afflib v3
+
+  Copyright (C) 2005-2006 Basis Technology, Inc.
+  Copyright (C) 2005-2013 Simson L. Garfinkel <simsong@acm.org>
+  Copyright (C) 2014-2022 Phillip Hellewell <sshock@gmail.com>
 
   This product includes software developed by Simson L. Garfinkel and Basis
   Technology Corp.
+
+  --- aff4-cpp-lite
+
+  Copyright Schatz Forensic Pty Ltd, 2017-2018
+
+  --- snappy
+
+  Copyright 2005 Google Inc. <opensource@google.com>
+
+  --- raptor2
+
+  Copyright (C) 2000-2023 Dave Beckett
+  Copyright (C) 2000-2005 University of Bristol. All Rights Reserved.
+
+  --- liblz4
+
+  Copyright (C) 2011-2023, Yann Collet.
+
+  --- zlib
+
+  Copyright (C) 1995-2024 Jean-loup Gailly and Mark Adler
+
+  --- libxml2
+
+  Copyright (C) 1998-2012 Daniel Veillard. All Rights Reserved.
 
 1.0 What is xmount? - A short description
   xmount allows you to convert on-the-fly between multiple input and output
@@ -94,19 +130,23 @@ Table of contents
     memory than libewf when mounting big (>1TB) images.
 
   2.4 libxmount_input_aff
-    Supports AFF (Advanced Forensic Format) images ("--in aff") using Simson
-    Garfinkel's afflib (https://github.com/simsong/AFFLIBv3).
+    Supports AFFv3 (Advanced Forensic Format v3) images ("--in aff") using
+    Simson Garfinkel's afflib (https://github.com/simsong/AFFLIBv3).
 
-  2.5 libxmount_input_aaff
+  2.5 libxmount_input_aff4
+    Supports AFFv4 (Advanced Forensic Format v4) images ("--in aff4") using
+    Schatz Forensic's aff4-cpp library (https://github.com/aff4/aff4-cpp-lite)
+
+  2.6 libxmount_input_aaff
     Supports AFF (Advanced Forensic Format) images ("--in aaff") using an AFF
     implementation written by Guy Voncken. In essence, it is a lot faster than
     afflib.
 
-  2.6 libxmount_input_qcow
+  2.7 libxmount_input_qcow
     Supports QCOW (QEMU Copy On Write) files ("--in qcow") using an
     implementation written by Guy Voncken.
 
-  2.7 libxmount_input_vdi
+  2.8 libxmount_input_vdi
     Supports VDI (VirtualBox's Virtual Disk Image) files ("--in vdi") using
     an implementation written by Guy Voncken.
 
@@ -287,11 +327,11 @@ Table of contents
   To xmount an EWF harddisk image from your acquired disk as a raw DD image
   under /mnt, use the following command:
 
-    xmount --in ewf ./acquired_disk.E?? /mnt
+    xmount --in aewf ./acquired_disk.E?? /mnt
 
   To xmount the same ewf image as vdi file, you would use a command like this:
 
-    xmount --in ewf ./acquired_disk.E?? --out vdi /mnt
+    xmount --in aewf ./acquired_disk.E?? --out vdi /mnt
 
   And to enable virtual write support on a raw DD input image xmounted as VDI
   file:

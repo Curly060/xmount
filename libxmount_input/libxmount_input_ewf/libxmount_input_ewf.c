@@ -23,11 +23,7 @@
 
 #include "../libxmount_input.h"
 
-#ifndef HAVE_LIBEWF_STATIC
-  #include <libewf.h>
-#else
-  #include "libewf/include/libewf.h"
-#endif
+#include <libewf.h>
 
 #ifndef LIBEWF_HANDLE
   // libewf version 2 no longer defines LIBEWF_HANDLE

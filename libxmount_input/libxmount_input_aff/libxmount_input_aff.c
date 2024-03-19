@@ -24,11 +24,7 @@
 
 #include "../libxmount_input.h"
 
-#ifndef HAVE_LIBAFF_STATIC
-  #include <afflib/afflib.h>
-#else
-  #include "libaff/include/afflib/afflib.h"
-#endif
+#include <afflib/afflib.h>
 
 #include "libxmount_input_aff.h"
 

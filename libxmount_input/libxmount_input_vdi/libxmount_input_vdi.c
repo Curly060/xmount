@@ -53,6 +53,8 @@ const char* LibXmount_Input_GetSupportedFormats() {
  * LibXmount_Input_GetFunctions
  */
 void LibXmount_Input_GetFunctions(ts_LibXmountInputFunctions *pFunctions) {
+    pFunctions->Init = &VdiInit;
+    pFunctions->DeInit = &VdiDeInit;
     pFunctions->CreateHandle = &VdiCreateHandle;
     pFunctions->DestroyHandle = &VdiDestroyHandle;
     pFunctions->Open = &VdiOpen;

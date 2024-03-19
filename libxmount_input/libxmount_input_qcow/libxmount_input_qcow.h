@@ -2,7 +2,7 @@
 * xmount Copyright (c) 2024 by SITS Sarl                                       *
 *                                                                              *
 * Author(s):                                                                   *
-*   Guy Voncken <deve‍lop@f‍aert.n‍et>                                            *
+*   Alain K.                                                                   *
 *                                                                              *
 * This program is free software: you can redistribute it and/or modify it      *
 * under the terms of the GNU General Public License as published by the Free   *
@@ -73,7 +73,6 @@ typedef struct {
 typedef struct {
    char     *pFilename;
    FILE     *pFile;
-   uint64_t   FileSize;
    t_QcowHeader Header;
    uint64_t* pL1Table;
    uint32_t L2Bits;

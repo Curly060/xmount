@@ -2,7 +2,7 @@
 * xmount Copyright (c) 2024 by SITS Sarl                                       *
 *                                                                              *
 * Author(s):                                                                   *
-*   Guy Voncken <deve‍lop@f‍aert.n‍et>                                            *
+*   Alain K.                                                                   *
 *                                                                              *
 * This program is free software: you can redistribute it and/or modify it      *
 * under the terms of the GNU General Public License as published by the Free   *
@@ -89,18 +89,21 @@ static uint64_t QcowL1OffsetFromAddress(t_pQcow pQcow, uint64_t Address) {
     return (Address >> (pQcow->Header.ClusterBits + pQcow->L2Bits));
 }
 
-static int QcowUtilFileSeek(t_pQcow pQcow, size_t offset) {
-    if (fseek(pQcow->pFile, offset, SEEK_SET)) {
+static int QcowUtilFileSeek(t_pQcow pQcow, size_t Offset) {
+    if (fseek(pQcow->pFile, Offset, SEEK_SET)) {
         return QCOW_CANNOT_SEEK;
     }
     return QCOW_OK;
 }
 
 static int QcowUtilFileRead(t_pQcow pQcow, void* Ptr, size_t Size) {
-    if (fread(Ptr, Size, 1, pQcow->pFile) != 1) {
+    uint64_t BytesRead = fread(Ptr, 1, Size, pQcow->pFile);
+    if (ferror(pQcow->pFile) != 0) {
         return QCOW_CANNOT_READ_DATA;
+    } else {
+        memset(Ptr+BytesRead, '\0', Size-BytesRead);
+        return QCOW_OK;
     }
-    return QCOW_OK;
 }
 
 static void QcowUtilLog(char* format, ...) {
@@ -182,49 +185,53 @@ static int QcowRead0(t_pQcow pQcow, char *pBuffer, uint64_t Seek, uint32_t *pCou
         CHK(QcowUtilFileRead(pQcow, &ClusterBaseAddress, sizeof(uint64_t)))
         ClusterBaseAddress = be64toh(ClusterBaseAddress);
         ClusterIsCompressed = (ClusterBaseAddress >> 62) & 1;
-        if (!ClusterIsCompressed)
-            ClusterBaseAddress = ClusterBaseAddress & UINT64_C(0x00fffffffffffe00);
+        if (!ClusterIsCompressed) {
+            if (ClusterBaseAddress & 1) { // Zero-Bit Flag
+                ClusterBaseAddress = 0;
+            } else {
+                ClusterBaseAddress = ClusterBaseAddress & UINT64_C(0x00fffffffffffe00);
+            }
+        }
     }
     if (ClusterBaseAddress == 0 ) {
         memset(pBuffer, '\0', *pCount);
         return QCOW_OK;
-        return QCOW_CANNOT_READ_DATA;
     }
     if (ClusterIsCompressed) {
         uint64_t AddressBits = 64 - 2 - (pQcow->Header.ClusterBits - 8);
         CompressedClusterSize = 512 * (1 + ((ClusterBaseAddress >> AddressBits) & (((size_t)1 << (pQcow->Header.ClusterBits - 8)) - 1)));
         ClusterBaseAddress = ClusterBaseAddress & (((size_t)1 << AddressBits) - 1);
-        char* p_compressed_buffer = malloc(CompressedClusterSize);
-        if(p_compressed_buffer == NULL) {
+        char* pCompressedBuffer = malloc(CompressedClusterSize);
+        if(pCompressedBuffer == NULL) {
             return QCOW_MEMALLOC_FAILED;
         }
-        char* p_uncompressed_buffer = malloc(pQcow->ClusterSize);
-        if(p_uncompressed_buffer == NULL) {
+        char* pUncompressedBuffer = malloc(pQcow->ClusterSize);
+        if(pUncompressedBuffer == NULL) {
             return QCOW_MEMALLOC_FAILED;
         }
         CHK(QcowUtilFileSeek(pQcow, ClusterBaseAddress))
-        CHK(QcowUtilFileRead(pQcow, p_compressed_buffer, CompressedClusterSize))
+        CHK(QcowUtilFileRead(pQcow, pCompressedBuffer, CompressedClusterSize))
         z_stream zlib_stream;
         memset(&zlib_stream, 0, sizeof( z_stream ) );
-        zlib_stream.next_in   = p_compressed_buffer;
+        zlib_stream.next_in   = pCompressedBuffer;
         zlib_stream.avail_in  = CompressedClusterSize;
-        zlib_stream.next_out  = p_uncompressed_buffer;
+        zlib_stream.next_out  = pUncompressedBuffer;
         zlib_stream.avail_out = pQcow->ClusterSize;
         int r = inflateInit2(&zlib_stream, -12);
         if (r) {
-            free(p_compressed_buffer);
-            free(p_uncompressed_buffer);
+            free(pCompressedBuffer);
+            free(pUncompressedBuffer);
             return QCOW_UNABLE_TO_DECOMPRESS_CLUSTER;
         }
         r = inflate(&zlib_stream, Z_FINISH);
         if (r < 0) {
-            free(p_compressed_buffer);
-            free(p_uncompressed_buffer);
+            free(pCompressedBuffer);
+            free(pUncompressedBuffer);
             return QCOW_UNABLE_TO_DECOMPRESS_CLUSTER;
         }
-        memcpy(pBuffer, p_uncompressed_buffer + ClusterOffset, *pCount);
-        free(p_compressed_buffer);
-        free(p_uncompressed_buffer);
+        memcpy(pBuffer, pUncompressedBuffer + ClusterOffset, *pCount);
+        free(pCompressedBuffer);
+        free(pUncompressedBuffer);
         return QCOW_OK;
     } else {
         DataAddress = ClusterBaseAddress + ClusterOffset;
@@ -407,9 +414,18 @@ static int QcowGetInfofileContent(void *pHandle, const char **ppInfoBuf) {
     char *p_info_buf;
 
     ret = asprintf(&p_info_buf,
-                   "QCOW image assembled of %" PRIu64 " bytes in total (%0.3f GiB)\n",
-                   pQcow->FileSize,
-                   pQcow->FileSize / (1024.0 * 1024.0 * 1024.0));
+                   "Image size               %" PRIu64 " bytes in total (%0.3f GiB)\n"
+                   "QCow Version             %u\n"
+                   "Cluster Size             %" PRIu64 "\n"
+                   "L1 Table Size            %u\n"
+                   "L2 Table Size            %" PRIu64 "\n",
+                   pQcow->Header.Size,
+                   pQcow->Header.Size / (1024.0 * 1024.0 * 1024.0),
+                   pQcow->Header.Version,
+                   pQcow->ClusterSize,
+                   pQcow->Header.L1Size,
+                   pQcow->L2Size
+                   );
     if (ret < 0 || *ppInfoBuf == NULL) return QCOW_MEMALLOC_FAILED;
 
     *ppInfoBuf = p_info_buf;

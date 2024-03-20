@@ -2,7 +2,7 @@
 
 Name:			xmount
 Summary:		Tool to crossmount between multiple input and output harddisk images
-Version:		1.0.0
+Version:		1.1.0
 Release:		1
 License:		GPL
 Group:			Applications/System
@@ -19,7 +19,7 @@ harddisk image types. xmount creates a virtual file system using FUSE
 image. The virtual representation can be in raw DD, Apple's Disk Image format (DMG),
 VirtualBox's virtual disk file format (VDI), VmWare's VMDK file format or Microsoft's
 Virtual Hard Disk Image format (VHD). Input images can be raw DD, EWF
-(Expert Witness Compression Format), AFF (Advanced Forensic Format),
+(Expert Witness Compression Format), AFF (Advanced Forensic Format v3 & v4),
 VDI (VirtualBox Virtual Disk Image) or QCOW (QEMU Copy On Write) files.
 In addition, xmount also supports virtual write access to the output files
 that is redirected to a cache file. This makes it possible to boot acquired
@@ -55,7 +55,7 @@ rm -fr %{buildroot}
 %doc AUTHORS COPYING INSTALL NEWS README ROADMAP
 
 %changelog
-* Fri Mar 15 2024 Daniel Gillen <development@sits.lu> 1.0.0-1
-* Release 1.0.0-1
+* Tue Mar 19 2024 Daniel Gillen <development@sits.lu> 1.1.0-1
+* Release 1.1.0-1
   See NEWS for details
 — build package

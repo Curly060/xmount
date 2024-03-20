@@ -293,7 +293,7 @@ Table of contents
 
       $ sudo apt install build-essential cmake pkg-config autoconf automake \
         libfuse-dev zlib1g-dev libssl-dev libexpat1-dev liblz4-dev libxml2-dev \
-        libcppunit-dev libtool bison flex
+        libcppunit-dev liblzma-dev libtool bison flex
 
     6.2.4 Installing prerequisits on OSx
       After installing OSXFuse and MacPorts (https://www.macports.org) issue the

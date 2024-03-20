@@ -20,10 +20,14 @@ VirtualBox's virtual disk file format (VDI), Microsoft's Virtual Hard Disk
 Image format (VHD) or in VmWare's VMDK file format.
 
 Input images can be raw DD, EWF (Expert Witness Compression Format), AFF
-(Advanced Forensic Format), VDI (VirtualBox Virtual Disk Image) or QCOW
-(QEMU Copy On Write) files.
+(Advanced Forensic Format v3 & possibly v4 (check xmount \-\-info)), VDI
+(VirtualBox Virtual Disk Image) or QCOW (QEMU Copy On Write) files.
 
-In addition, xmount also supports virtual write access to the output files
+It is also possible to apply morphing functions to input images. You can for
+example combine multiple input images into one output image, or reconstruct
+raids on-the-fly.
+
+And finally, xmount also supports virtual write access to the output files
 that is redirected to a cache file. This makes it possible to boot acquired
 harddisk images using QEMU, KVM, VirtualBox, VmWare or alike.
 .br
@@ -58,6 +62,7 @@ xopts: (Options specific to xmount)
   \-\-out <otype> : Output image format. If not specified, defaults to "raw".
     <otype> can be "raw", "dmg", "vdi", "vhd", "vmdk", "vmdks".
   \-\-owcache <file> : Same as \-\-cache <file> but overwrites existing cache file.
+  \-\-rocache <file> : Same as \-\-cache <file> but does **not** allow further writes.
   \-\-sizelimit <size> : The data end of input image(s) is set to no more than <size> bytes after the data start.
   \-\-version : Same as \-\-info.
 .br
@@ -74,11 +79,11 @@ Hopefully none. If you find any, please e\-mail to <bugs@sits.lu>.
 To xmount an EWF image from your acquired disk as a raw DD image under /mnt,
 use the following command:
 
-  xmount \-\-in ewf ./acquired_disk.E?? /mnt
+  xmount \-\-in aewf ./acquired_disk.E?? /mnt
 
 To xmount the same ewf image as vdi file, you would use a command like this:
 
-  xmount \-\-in ewf ./acquired_disk.E?? \-\-out vdi /mnt
+  xmount \-\-in aewf ./acquired_disk.E?? \-\-out vdi /mnt
 
 And to enable virtual write support on a raw DD input image xmounted as VDI
 file:

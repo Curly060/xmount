@@ -9,11 +9,13 @@ if(NOT STATIC_AFF)
   set(LIBS ${LIBS} ${LIBAFF4_LIBRARIES})
 else(NOT STATIC_AFF)
   include_directories(${CMAKE_CURRENT_SOURCE_DIR}/libaff4/src)
-  set(LIBS ${LIBS} ${CMAKE_CURRENT_SOURCE_DIR}/libsnappy/build/libsnappy.a)
-  set(LIBS ${LIBS} ${CMAKE_CURRENT_SOURCE_DIR}/libraptor2/src/.libs/libraptor2.a)
+
   set(LIBS ${LIBS} ${CMAKE_CURRENT_SOURCE_DIR}/libaff4/src/.libs/libaff4.a)
+  set(LIBS ${LIBS} ${CMAKE_CURRENT_SOURCE_DIR}/libraptor2/src/.libs/libraptor2.a)
+  set(LIBS ${LIBS} ${CMAKE_CURRENT_SOURCE_DIR}/libsnappy/build/libsnappy.a)
+
   if(NOT APPLE)
-    set(LIBS ${LIBS} "-lstdc++ -lz -llz4")
+    set(LIBS ${LIBS} "-lstdc++ -lz -lm -ldl -llz4 -llzma -lxml2 -licui18n -licuuc -licudata")
   else(NOT APPLE)
     # As most of afflib4's deps on OSx come from MacPorts, better link in
     # everything statically

@@ -53,7 +53,7 @@ fi
 )
 
 ############################## LibAFF4
-# libaff4 requires libsnappy & libraptor2
+# libaff4 requires libsnappy, libraptor2 & libxml2
 # LibSNAPPY
 (
   cd libxmount_input/libxmount_input_aff4/
@@ -71,6 +71,25 @@ fi
   make -j$JOBS
 )
 
+# LibXML2
+if [ "$OS" == "debian" ]; then
+  # Under Linux, wee need to compile this ourself too...
+  (
+    cd libxmount_input/libxmount_input_aff4/
+    echo
+    echo "Extracting libxml2"
+    rm -rf libxml2 &>/dev/null
+    tar xfz libxml2-*.tar.gz
+    echo
+    read -p "Ready to configure LIBXML2?"
+    cd libxml2
+    CFLAGS="-fPIC" CXXFLAGS="-fPIC" ./autogen.sh --enable-static=yes --enable-shared=yes --without-ftp --without-debug --without-icu --without-python
+    echo
+    read -p "Ready to compile LIBXML2?"
+    make -j$JOBS
+  )
+fi
+
 # LibRAPTOR2
 (
   cd libxmount_input/libxmount_input_aff4/
@@ -83,7 +102,7 @@ fi
   cd libraptor2
   #CFLAGS="-fPIC" CXXFLAGS="-fPIC" ./configure --with-www=none --with-yajl=no --enable-release
   if [ "$OS" == "debian" ]; then
-    CFLAGS="-fPIC" CXXFLAGS="-fPIC" ./configure --with-www=none --with-yajl=no --enable-shared=yes --enable-static=yes --enable-release
+    CFLAGS="-fPIC -I$(pwd)/../libxml2/include" CXXFLAGS="-fPIC -I$(pwd)/../libxml2/include" LDFLAGS="-L$(pwd)/../libxml2/.libs" LIBXML_CFLAGS="-I$(pwd)/../libxml2/include" LIBXML_LIBS="-L$(pwd)/../libxml2/.libs -lxml2 -llzma -ldl -lz -lm" ./configure --with-www=none --with-yajl=no --enable-shared=yes --enable-static=yes --enable-release --with-xml2-config=$(pwd)/../libxml2/xml2-config
   else
     CFLAGS="-fPIC" CXXFLAGS="-fPIC" ./configure --enable-parsers=turtle --enable-serializers=ntriples --with-www=none --with-yajl=no --enable-release
   fi

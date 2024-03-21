@@ -1,7 +1,5 @@
-xmount (1.1.0) stable; urgency=low
+xmount (1.1.1) stable; urgency=low
 
-  * Added input support for the Advanced Forensic Format v4
-  * Fixed a small bug libxmount_input_qcow
-  * Added the ability to specify a cache file in read-only mode
+  * Static builds now also include libxml2 to be compatible with newer Ubuntu versions
 
- -- Gillen Daniel <development@sits.lu>  Tue, 19 Mar 2024 19:00:00 +0100
+ -- Gillen Daniel <development@sits.lu>  Thu, 21 Mar 2024 19:00:00 +0100

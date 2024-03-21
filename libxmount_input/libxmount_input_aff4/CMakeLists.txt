@@ -12,10 +12,11 @@ else(NOT STATIC_AFF)
 
   set(LIBS ${LIBS} ${CMAKE_CURRENT_SOURCE_DIR}/libaff4/src/.libs/libaff4.a)
   set(LIBS ${LIBS} ${CMAKE_CURRENT_SOURCE_DIR}/libraptor2/src/.libs/libraptor2.a)
+  set(LIBS ${LIBS} ${CMAKE_CURRENT_SOURCE_DIR}/libxml2/.libs/libxml2.a)
   set(LIBS ${LIBS} ${CMAKE_CURRENT_SOURCE_DIR}/libsnappy/build/libsnappy.a)
 
   if(NOT APPLE)
-    set(LIBS ${LIBS} "-lstdc++ -lz -lm -ldl -llz4 -llzma -lxml2 -licui18n -licuuc -licudata")
+    set(LIBS ${LIBS} "-lstdc++ -lz -lm -ldl -llz4 -llzma")
   else(NOT APPLE)
     # As most of afflib4's deps on OSx come from MacPorts, better link in
     # everything statically

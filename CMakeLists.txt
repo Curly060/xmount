@@ -24,7 +24,7 @@ if(STATIC_AFF)
   endif(NOT LINUX_DIST)
 endif(STATIC_AFF)
 
-add_definitions(-DXMOUNT_VERSION="1.1.0")
+add_definitions(-DXMOUNT_VERSION="1.1.1")
 
 if(APPLE)
   # On OSx, do not try to find frameworks but only std headers / libraries

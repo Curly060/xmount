@@ -42,7 +42,11 @@
 #include <pthread.h>
 #include <time.h> // For time
 
-#define FUSE_USE_VERSION 26
+#ifdef HAVE_FUSE3
+  #define FUSE_USE_VERSION 30
+#else
+  #define FUSE_USE_VERSION 26
+#endif
 #include <fuse.h>
 
 #include "xmount.h"
@@ -102,17 +106,28 @@ static int LibXmount_Morphing_ImageCount(uint64_t*);
 static int LibXmount_Morphing_Size(uint64_t, uint64_t*);
 static int LibXmount_Morphing_Read(uint64_t, char*, off_t, size_t, size_t*);
 // Functions implementing FUSE functions
-static int FuseGetAttr(const char*, struct stat*);
+#ifdef HAVE_FUSE3
+  static int FuseGetAttr(const char*, struct stat*, struct fuse_file_info*);
+  static int FuseReadDir(const char*,
+                         void*,
+                         fuse_fill_dir_t,
+                         off_t,
+                         struct fuse_file_info*,
+                         enum fuse_readdir_flags);
+  static int FuseRename(const char*, const char*, unsigned int);
+#else
+  static int FuseGetAttr(const char*, struct stat*);
+  static int FuseReadDir(const char*,
+                         void*,
+                         fuse_fill_dir_t,
+                         off_t,
+                         struct fuse_file_info*);
+  static int FuseRename(const char*, const char*);
+#endif
 static int FuseMkDir(const char*, mode_t);
 static int FuseMkNod(const char*, mode_t, dev_t);
-static int FuseReadDir(const char*,
-                       void*,
-                       fuse_fill_dir_t,
-                       off_t,
-                       struct fuse_file_info*);
 static int FuseOpen(const char*, struct fuse_file_info*);
 static int FuseRead(const char*, char*, size_t, off_t, struct fuse_file_info*);
-static int FuseRename(const char*, const char*);
 static int FuseRmDir(const char*);
 static int FuseUnlink(const char*);
 //static int FuseStatFs(const char*, struct statvfs*);
@@ -3012,7 +3027,14 @@ static int FuseAccess(const char *path, int perm) {
  * \param p_stat Pointer to stat structure to save attributes to
  * \return 0 on success, negated error code on error
  */
-static int FuseGetAttr(const char *p_path, struct stat *p_stat) {
+#ifdef HAVE_FUSE3
+static int FuseGetAttr(const char *p_path, struct stat *p_stat, struct fuse_file_info *p_fi)
+{
+  (void)p_fi;
+#else
+static int FuseGetAttr(const char *p_path, struct stat *p_stat)
+{
+#endif
   memset(p_stat,0,sizeof(struct stat));
   if(strcmp(p_path,"/")==0) {
     // Attributes of mountpoint
@@ -3159,6 +3181,63 @@ static int FuseMkNod(const char *p_path, mode_t mode, dev_t dev) {
  * \param p_fi File info struct
  * \return 0 on success, negated error code on error
  */
+#ifdef HAVE_FUSE3
+static int FuseReadDir(const char *p_path,
+                       void *p_buf,
+                       fuse_fill_dir_t filler,
+                       off_t offset,
+                       struct fuse_file_info *p_fi,
+                       enum fuse_readdir_flags flags)
+{
+  // Ignore some params
+  (void)offset;
+  (void)p_fi;
+  (void)flags;
+
+  if(strcmp(p_path,"/")==0) {
+    // Add std . and .. entrys
+    filler(p_buf,".",NULL,0,0);
+    filler(p_buf,"..",NULL,0,0);
+    // Add our virtual files (p+1 to ignore starting "/")
+    filler(p_buf,glob_xmount.output.p_virtual_image_path+1,NULL,0,0);
+    filler(p_buf,glob_xmount.output.p_info_path+1,NULL,0,0);
+    if(glob_xmount.output.VirtImageType==VirtImageType_VMDK ||
+       glob_xmount.output.VirtImageType==VirtImageType_VMDKS)
+    {
+      // For VMDK's, we use an additional descriptor file
+      filler(p_buf,glob_xmount.output.vmdk.p_virtual_vmdk_path+1,NULL,0,0);
+      // And there could also be a lock directory
+      if(glob_xmount.output.vmdk.p_vmdk_lockdir1!=NULL) {
+        filler(p_buf,glob_xmount.output.vmdk.p_vmdk_lockdir1+1,NULL,0,0);
+      }
+    }
+  } else if(glob_xmount.output.VirtImageType==VirtImageType_VMDK ||
+            glob_xmount.output.VirtImageType==VirtImageType_VMDKS)
+  {
+    // For VMDK emulation, there could be a lock directory
+    if(glob_xmount.output.vmdk.p_vmdk_lockdir1!=NULL &&
+       strcmp(p_path,glob_xmount.output.vmdk.p_vmdk_lockdir1)==0)
+    {
+      filler(p_buf,".",NULL,0,0);
+      filler(p_buf,"..",NULL,0,0);
+      if(glob_xmount.output.vmdk.p_vmdk_lockfile_name!=NULL) {
+        filler(p_buf,
+               glob_xmount.output.vmdk.p_vmdk_lockfile_name+
+                 strlen(glob_xmount.output.vmdk.p_vmdk_lockdir1)+1,
+               NULL,
+               0,0);
+      }
+    } else if(glob_xmount.output.vmdk.p_vmdk_lockdir2!=NULL &&
+              strcmp(p_path,glob_xmount.output.vmdk.p_vmdk_lockdir2)==0)
+    {
+      filler(p_buf,".",NULL,0,0);
+      filler(p_buf,"..",NULL,0,0);
+    } else return -ENOENT;
+  } else return -ENOENT;
+
+  return 0;
+}
+#else
 static int FuseReadDir(const char *p_path,
                        void *p_buf,
                        fuse_fill_dir_t filler,
@@ -3212,6 +3291,7 @@ static int FuseReadDir(const char *p_path,
 
   return 0;
 }
+#endif
 
 //! FUSE open implementation
 /*!
@@ -3339,7 +3419,14 @@ static int FuseRead(const char *p_path,
  * \param p_npath New filename
  * \return 0 on error, negated error code on error
  */
-static int FuseRename(const char *p_path, const char *p_npath) {
+#ifdef HAVE_FUSE3
+static int FuseRename(const char *p_path, const char *p_npath, unsigned int flags)
+{
+  (void)flags;
+#else
+static int FuseRename(const char *p_path, const char *p_npath)
+{
+#endif
   if(glob_xmount.output.VirtImageType==VirtImageType_VMDK ||
      glob_xmount.output.VirtImageType==VirtImageType_VMDKS)
   {

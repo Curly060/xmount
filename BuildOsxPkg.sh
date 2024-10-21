@@ -33,8 +33,30 @@ find "$CWD"/build/libxmount_input -name "libxmount_input_*.dylib" -exec cp "{}" 
 find "$CWD"/build/libxmount_morphing -name "libxmount_morphing_*.dylib" -exec cp "{}" "$DSTROOT"/usr/local/lib/xmount/ \;
 cp "$CWD"/xmount.1 "$DSTROOT"/usr/local/share/man/man1/
 
+# Create library list
+LIBS=""
+while read F; do
+    LIBS="$LIBS														<dict>\n"
+    LIBS="$LIBS															<key>CHILDREN</key>\n"
+    LIBS="$LIBS															<array/>\n"
+    LIBS="$LIBS															<key>GID</key>\n"
+    LIBS="$LIBS															<integer>0</integer>\n"
+    LIBS="$LIBS															<key>PATH</key>\n"
+    LIBS="$LIBS															<string>dstroot/usr/local/lib/xmount/${F}</string>\n"
+    LIBS="$LIBS															<key>PATH_TYPE</key>\n"
+    LIBS="$LIBS															<integer>1</integer>\n"
+    LIBS="$LIBS															<key>PERMISSIONS</key>\n"
+    LIBS="$LIBS															<integer>493</integer>\n"
+    LIBS="$LIBS															<key>TYPE</key>\n"
+    LIBS="$LIBS															<integer>3</integer>\n"
+    LIBS="$LIBS															<key>UID</key>\n"
+    LIBS="$LIBS															<integer>0</integer>\n"
+    LIBS="$LIBS														</dict>\n"
+done < <(ls "$DSTROOT"/usr/local/lib/xmount/)
+
 # Patch project file
 sed -i -e "s#%%XMOUNT_VERSION%%#$PKG_VERSION#g" "$CWD"/xmount_pkg/xmount.pkgproj
+sed -i -e "s#%%XMOUNT_LIBS%%#$LIBS#g" "$CWD"/xmount_pkg/xmount.pkgproj
 
 #open "$CWD"/xmount_pkg/xmount.pkgproj
 packagesbuild "$CWD/xmount_pkg/xmount.pkgproj"

@@ -242,9 +242,9 @@ Table of contents
 
       FUSE:
         Your OS must support FUSE and have the appropriate libraries installed.
-        (See http://fuse.sourceforge.net/ for more informations). On OSx, you can
-        use MacFuse (https://osxfuse.github.io/) as replacement. To be able to
-        install from source, you also need the FUSE header files.
+        (See https://github.com/libfuse/libfuse for more informations). On OSx,
+        you can use MacFuse (https://osxfuse.github.io/) as replacement. To be
+        able to install from source, you also need the FUSE header files.
 
       LIBEWF:
         To enable EWF input image support. Get it from
@@ -300,7 +300,7 @@ Table of contents
       following command in a terminal:
 
       $ sudo port install autoconf automake cmake libtool pkgconfig readline \
-        cppunit
+        cppunit openssl zlib expat ncurses readline lz4
 
       I recommend building xmount statically under OSx using the ewf and aff
       libraries that are part of the xmount source tree. They can be compiled

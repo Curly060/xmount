@@ -72,23 +72,20 @@ fi
 )
 
 # LibXML2
-if [ "$OS" == "debian" ]; then
-  # Under Linux, wee need to compile this ourself too...
-  (
-    cd libxmount_input/libxmount_input_aff4/
-    echo
-    echo "Extracting libxml2"
-    rm -rf libxml2 &>/dev/null
-    tar xfz libxml2-*.tar.gz
-    echo
-    read -p "Ready to configure LIBXML2?"
-    cd libxml2
-    CFLAGS="-fPIC" CXXFLAGS="-fPIC" ./autogen.sh --enable-static=yes --enable-shared=yes --without-ftp --without-debug --without-icu --without-python
-    echo
-    read -p "Ready to compile LIBXML2?"
-    make -j$JOBS
-  )
-fi
+(
+  cd libxmount_input/libxmount_input_aff4/
+  echo
+  echo "Extracting libxml2"
+  rm -rf libxml2 &>/dev/null
+  tar xfz libxml2-*.tar.gz
+  echo
+  read -p "Ready to configure LIBXML2?"
+  cd libxml2
+  CFLAGS="-fPIC" CXXFLAGS="-fPIC" ./autogen.sh --enable-static=yes --enable-shared=yes --without-ftp --without-debug --without-icu --without-python
+  echo
+  read -p "Ready to compile LIBXML2?"
+  make -j$JOBS
+)
 
 # LibRAPTOR2
 (

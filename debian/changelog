@@ -1,5 +1,5 @@
-xmount (1.1.1) stable; urgency=low
+xmount (1.2.0) stable; urgency=low
 
-  * Static builds now also include libxml2 to be compatible with newer Ubuntu versions
+  * Added support for libfuse v3
 
- -- Gillen Daniel <development@sits.lu>  Thu, 21 Mar 2024 19:00:00 +0100
+ -- Gillen Daniel <development@sits.lu>  Thu, 21 Oct 2024 15:00:00 +0200

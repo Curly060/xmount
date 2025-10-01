@@ -1,6 +1,9 @@
 This file lists the most important changes to the previous released version.
 For a full list of changes please refer to https://code.sits.lu/foss/xmount
 
+New in version 1.2.1:
+  - Added compatibility with cmake >= v4.0 needed by Debian unstable.
+
 New in version 1.2.0:
   - Added support for libfuse v3 on platforms supporting it.
 

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* xmount Copyright (c) 2024 by SITS Sarl                                       *
+* xmount Copyright (c) 2024-2025 by SITS Sarl                                       *
 *                                                                              *
 * Author(s):                                                                   *
 *   Gillen Daniel <development@sits.lu>                                        *
@@ -55,7 +55,7 @@
 #include "../libxmount/libxmount.h"
 
 #define XMOUNT_COPYRIGHT_NOTICE \
-  "xmount v%s Copyright (c) 2024 by SITS Sarl <development@sits.lu>"
+  "xmount v%s Copyright (c) 2024-2025 by SITS Sarl <development@sits.lu>"
 
 #define LOG_WARNING(...) {            \
   LIBXMOUNT_LOG_WARNING(__VA_ARGS__); \

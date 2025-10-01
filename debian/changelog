@@ -1,5 +1,5 @@
-xmount (1.2.0) stable; urgency=low
+xmount (1.2.1) stable; urgency=low
 
-  * Added support for libfuse v3
+  * Added compatibility with cmake >= v4.0 needed by Debian unstable.
 
- -- Gillen Daniel <development@sits.lu>  Thu, 21 Oct 2024 15:00:00 +0200
+ -- Gillen Daniel <development@sits.lu>  Wed, 01 Oct 2025 11:00:00 +0200

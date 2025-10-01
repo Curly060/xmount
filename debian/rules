@@ -1,3 +1,12 @@
 #!/usr/bin/make -f
-include /usr/share/cdbs/1/rules/debhelper.mk
-include /usr/share/cdbs/1/class/cmake.mk
+
+CPPFLAGS:=$(shell dpkg-buildflags --get CPPFLAGS)
+CMAKE_C_FLAGS:=$(shell dpkg-buildflags --get CFLAGS) -g -fno-strict-aliasing -std=c99 -Wall $(CPPFLAGS)
+CMAKE_LDFLAGS:=$(shell dpkg-buildflags --get LDFLAGS)
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+	dh_auto_configure -- -DCMAKE_C_FLAGS="$(CMAKE_C_FLAGS)" -DCMAKE_BUILD_TYPE=Release -DCMAKE_SHARED_LINKER_FLAGS="$(CMAKE_LDFLAGS)" -DCMAKE_EXE_LINKER_FLAGS="$(CMAKE_LDFLAGS)" -DCMAKE_MODULE_LINKER_FLAGS="$(CMAKE_LDFLAGS)"
+

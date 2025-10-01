@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.0...4.1)
 project(xmount C)
 
 include(CheckIncludeFiles)
@@ -87,7 +87,9 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 add_definitions(-D_LARGEFILE64_SOURCE)
 add_definitions(-D_FILE_OFFSET_BITS=64)
 add_definitions(-D_GNU_SOURCE)
-set(CMAKE_C_FLAGS "-fno-strict-aliasing -std=c99 -Wall")
+if(NOT CMAKE_C_FLAGS)
+  set(CMAKE_C_FLAGS "-fno-strict-aliasing -std=c99 -Wall")
+endif(NOT CMAKE_C_FLAGS)
 set(CMAKE_C_FLAGS_RELEASE "-O2 ${CMAKE_C_FLAGS}")
 set(CMAKE_C_FLAGS_DEBUG "-ggdb -O0 ${CMAKE_C_FLAGS}")
 

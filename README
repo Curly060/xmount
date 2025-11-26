@@ -14,9 +14,10 @@ Table of contents
     2.7 libxmount_input_qcow
     2.8 libxmount_input_vdi
   3.0 Morphing support
-    3.1 libxmount_morphing_combine
-    3.2 libxmount_morphing_raid
-    3.3 libxmount_morphing_unallocated
+    3.1 libxmount_morphing_byteswap
+    3.2 libxmount_morphing_combine
+    3.3 libxmount_morphing_raid
+    3.4 libxmount_morphing_unallocated
   4.0 Output image
     4.1 Emulated RAW file
     4.2 Emulated DMG file
@@ -158,19 +159,23 @@ Table of contents
   officially supported morphing libraries. As with the input image libs, not all
   might be available on your system.
 
-  3.1 libxmount_morphing_combine
+  3.1 libxmount_morphing_byteswap
+    Using "--morph byteswap", data is byteswapped, i.ex.: "1234" is morphed
+    into "2143". xmount will abort if input image is not of even size!
+
+  3.2 libxmount_morphing_combine
     Using "--morph combine", data from all input images is concatenated into
     a single image. Images are appended in the same order they are specified on
     the command line. This morphing type is also the default if no "--morph"
     option is specified.
 
-  3.2 libxmount_morphing_raid
+  3.3 libxmount_morphing_raid
     This morphing library supports emulation of hardware / software raid.
     Currently, only RAID0 ("--morph raid0") is supported. The used chunk /
     stripe size in bytes can be specified with "--morphopts raid_chunksize=XXX".
     All input images are treated as member disks of the original raid.
 
-  3.3 libxmount_morphing_unallocated
+  3.4 libxmount_morphing_unallocated
     Using "--morph unallocated" it is possible to extract unallocated sectors
     from a filesystem. For this to work, your input image must start with the
     volume you want to extract unallocated sectors from. If you have an image of
